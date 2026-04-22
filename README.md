@@ -7,3 +7,4 @@
 # SQL data visualization
 # AI integration
 # etc.
+# Refer to gantt chart
