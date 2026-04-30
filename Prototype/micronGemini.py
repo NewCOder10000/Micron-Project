@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
-import google.generativeai as genai
+from google import genai
 
 st.set_page_config(page_title="Micron Streamlit Dummy", layout="wide")
 
@@ -22,7 +22,11 @@ if "ai_summary" not in st.session_state:
 if "ai_summary_key" not in st.session_state:
     st.session_state.ai_summary_key = None
 if "util_threshold" not in st.session_state:
-    st.session_state.util_threshold = 80
+    st.session_state.util_threshold = 95
+if "_thresh_slider" not in st.session_state:
+    st.session_state._thresh_slider = 95
+if "_thresh_input" not in st.session_state:
+    st.session_state._thresh_input = 95
 
 GEMINI_API_KEY = "AIzaSyB7vF_GEjsbdDg0cdcUVzjLeIm57ZgNcRE"
 GEMINI_MODEL = "gemini-2.5-flash"
@@ -174,13 +178,13 @@ def build_prompt_machine(machine_id, filtered_df, shift_label):
 
 Machine: {machine_id}
 Shift: {shift_label}
-Utilization: {util}% (target is 80%+)
+Utilization: {util}%
 Total downtime: {downtime_min} minutes
 Top 3 downtime reasons: {top3_str}
 
 Write exactly 3 bullet points using • as the bullet symbol. No headers, no extra text, just the 3 bullets.
 
-• Bullet 1: State the machine's utilization and downtime minutes. Note if it's above or below the 80% target. One sentence, factual only.
+• Bullet 1: State the machine's utilization and downtime minutes. One sentence, factual only.
 • Bullet 2: Explain what the top downtime reasons suggest is happening with this machine. One to two sentences, no filler.
 • Bullet 3: Give 1-2 specific, actionable things the next operator should do for this machine. No motivational language.
 
@@ -234,17 +238,16 @@ if st.session_state.df is not None and st.session_state.page != "upload":
         st.markdown("### 🎯 Utilisation Threshold")
 
         def _sync_from_slider():
-            st.session_state.util_threshold = st.session_state._thresh_slider
+            st.session_state._thresh_input = st.session_state._thresh_slider
 
         def _sync_from_input():
-            val = max(5, min(100, int(st.session_state._thresh_input)))
-            st.session_state.util_threshold = val
+            val = max(0, min(100, int(st.session_state._thresh_input)))
             st.session_state._thresh_slider = val
+            st.session_state._thresh_input = val
 
         st.slider(
             "Threshold (%)",
-            min_value=5, max_value=100, step=1,
-            value=st.session_state.util_threshold,
+            min_value=0, max_value=100, step=1,
             key="_thresh_slider",
             on_change=_sync_from_slider,
             label_visibility="collapsed",
@@ -253,12 +256,14 @@ if st.session_state.df is not None and st.session_state.page != "upload":
         with inp_col:
             st.number_input(
                 "Manual input",
-                min_value=5, max_value=100, step=1,
-                value=st.session_state.util_threshold,
+                min_value=0, max_value=100, step=1,
                 key="_thresh_input",
                 on_change=_sync_from_input,
                 label_visibility="collapsed",
             )
+
+        # Derive threshold from slider on every render — no stale state
+        st.session_state.util_threshold = st.session_state._thresh_slider
         st.caption(f"🟢 ≥ {st.session_state.util_threshold}%  🔴 < {st.session_state.util_threshold}%")
         st.divider()
 
