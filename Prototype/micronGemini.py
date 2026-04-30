@@ -21,6 +21,8 @@ if "ai_summary" not in st.session_state:
     st.session_state.ai_summary = None
 if "ai_summary_key" not in st.session_state:
     st.session_state.ai_summary_key = None
+if "util_threshold" not in st.session_state:
+    st.session_state.util_threshold = 80
 
 GEMINI_API_KEY = "AIzaSyB7vF_GEjsbdDg0cdcUVzjLeIm57ZgNcRE"
 GEMINI_MODEL = "gemini-2.5-flash"
@@ -82,6 +84,9 @@ def get_pct_color(pct):
         return "#f1c40f"
     else:
         return "#e74c3c"
+
+def get_util_color(pct, threshold):
+    return "#2ecc71" if pct >= threshold else "#e74c3c"
 
 def call_gemini(prompt):
     import requests
@@ -225,6 +230,38 @@ if st.session_state.df is not None and st.session_state.page != "upload":
             st.rerun()
         st.divider()
 
+        # ── UTILISATION THRESHOLD ──────────────────────────────────────────
+        st.markdown("### 🎯 Utilisation Threshold")
+
+        def _sync_from_slider():
+            st.session_state.util_threshold = st.session_state._thresh_slider
+
+        def _sync_from_input():
+            val = max(5, min(100, int(st.session_state._thresh_input)))
+            st.session_state.util_threshold = val
+            st.session_state._thresh_slider = val
+
+        st.slider(
+            "Threshold (%)",
+            min_value=5, max_value=100, step=1,
+            value=st.session_state.util_threshold,
+            key="_thresh_slider",
+            on_change=_sync_from_slider,
+            label_visibility="collapsed",
+        )
+        _, inp_col = st.columns([1, 1])
+        with inp_col:
+            st.number_input(
+                "Manual input",
+                min_value=5, max_value=100, step=1,
+                value=st.session_state.util_threshold,
+                key="_thresh_input",
+                on_change=_sync_from_input,
+                label_visibility="collapsed",
+            )
+        st.caption(f"🟢 ≥ {st.session_state.util_threshold}%  🔴 < {st.session_state.util_threshold}%")
+        st.divider()
+
 # ── PAGE: OVERVIEW ─────────────────────────────────────────────────────────────
 if st.session_state.page == "overview":
     df = st.session_state.df
@@ -283,7 +320,7 @@ if st.session_state.page == "overview":
     st.markdown(f"#### Fleet Summary · {ov_shift_label}")
     fc1, fc2, fc3, fc4 = st.columns(4)
     with fc1:
-        colored_metric("Fleet Utilization", f"{fleet_util}%", f"UP_PRODUCT across {total_machines} machines", get_pct_color(fleet_util))
+        colored_metric("Fleet Utilization", f"{fleet_util}%", f"UP_PRODUCT across {total_machines} machines", get_util_color(fleet_util, st.session_state.util_threshold))
     with fc2:
         metric_box("Total Repair Time", f"{fleet_repair} min", "WAIT_REPAIR + IN_REPAIR")
     with fc3:
@@ -321,7 +358,7 @@ if st.session_state.page == "overview":
         m_repair = int(mdf[mdf["Status"].isin(["WAIT_REPAIR", "IN_REPAIR"])]["Duration_Min"].sum())
         m_idle = int(mdf[mdf["Status"] == "IDLE"]["Duration_Min"].sum())
         m_pm = int(mdf[mdf["Status"].isin(["WAIT_PM", "IN_PM"])]["Duration_Min"].sum())
-        util_color = get_pct_color(m_util)
+        util_color = get_util_color(m_util, st.session_state.util_threshold)
 
         bar_segments = ""
         for status, color in STATUS_COLORS.items():
@@ -357,7 +394,7 @@ if st.session_state.page == "overview":
     # ── MACHINE PERFORMANCE TIMELINE ──────────────────────────────────────────
     st.divider()
     st.markdown("#### Machine Performance Timeline")
-    st.write("Chronological status timeline per machine · hover segments for details")
+    st.write("Chronological status timeline per machine · hover for details")
 
     tl_df = ov_df.copy()
     tl_df = tl_df.dropna(subset=["Start_Time", "End_Time"])
@@ -374,6 +411,7 @@ if st.session_state.page == "overview":
             st.warning("Timeline span is zero — check Start_Time/End_Time columns.")
         else:
             # Build time axis labels (every 2 hours)
+            import math
             axis_marks = []
             cur = t_min.replace(minute=0, second=0, microsecond=0)
             if cur < t_min:
@@ -383,55 +421,40 @@ if st.session_state.page == "overview":
                 axis_marks.append((pct, cur.strftime("%H:%M")))
                 cur += pd.Timedelta(hours=2)
 
-            # Render timeline boxes in a 2-column grid
-            for row_start in range(0, len(machines), 2):
-                pair = machines[row_start:row_start + 2]
-                tl_col1, tl_col2 = st.columns(2)
-                cols = [tl_col1, tl_col2]
-                for i, machine in enumerate(pair):
-                    mdf = tl_df[tl_df["Machine_ID"] == machine].sort_values("Start_Time")
-                    m_total = mdf["Duration_Min"].sum()
-                    m_up = mdf[mdf["Status"] == "UP_PRODUCT"]["Duration_Min"].sum()
-                    m_util = round((m_up / m_total) * 100) if m_total > 0 else 0
-                    util_color = get_pct_color(m_util)
+            axis_ticks_html = '<div style="position:relative; height:20px; margin-bottom:4px; margin-left:90px;">'
+            for pct, label in axis_marks:
+                axis_ticks_html += f'<span style="position:absolute; left:{pct:.1f}%; transform:translateX(-50%); font-size:10px; color:#888;">{label}</span>'
+            axis_ticks_html += '</div>'
+            st.markdown(axis_ticks_html, unsafe_allow_html=True)
 
-                    # Time axis ticks (rendered inside each box)
-                    axis_html = '<div style="position:relative; height:16px; margin-bottom:2px;">'
-                    for pct, label in axis_marks:
-                        axis_html += f'<span style="position:absolute; left:{pct:.1f}%; transform:translateX(-50%); font-size:9px; color:#555;">{label}</span>'
-                    axis_html += '</div>'
+            for machine in machines:
+                mdf = tl_df[tl_df["Machine_ID"] == machine].sort_values("Start_Time")
 
-                    # Segment blocks
-                    segments_html = ""
-                    for _, row in mdf.iterrows():
-                        seg_start = (row["Start_Time"] - t_min).total_seconds() / 60.0
-                        seg_dur = row["Duration_Min"]
-                        left_pct = (seg_start / total_span) * 100
-                        width_pct = (seg_dur / total_span) * 100
-                        color = STATUS_COLORS.get(row["Status"], "#555555")
-                        start_str = row["Start_Time"].strftime("%H:%M")
-                        end_str = row["End_Time"].strftime("%H:%M") if pd.notna(row["End_Time"]) else "?"
-                        reason = row.get("Downtime_Reason", "")
-                        reason_str = f" · {reason}" if pd.notna(reason) and str(reason).strip() else ""
-                        tooltip = f"{row['Status']}{reason_str} | {start_str}–{end_str} ({int(seg_dur)} min)"
-                        segments_html += f'<div title="{tooltip}" style="position:absolute; left:{left_pct:.2f}%; width:{max(width_pct, 0.3):.2f}%; background:{color}; height:100%; border-right:1px solid #0d0f1a; box-sizing:border-box;"></div>'
+                segments_html = ""
+                for _, row in mdf.iterrows():
+                    seg_start = (row["Start_Time"] - t_min).total_seconds() / 60.0
+                    seg_dur = row["Duration_Min"]
+                    left_pct = (seg_start / total_span) * 100
+                    width_pct = (seg_dur / total_span) * 100
+                    color = STATUS_COLORS.get(row["Status"], "#555555")
+                    start_str = row["Start_Time"].strftime("%H:%M")
+                    end_str = row["End_Time"].strftime("%H:%M") if pd.notna(row["End_Time"]) else "?"
+                    reason = row.get("Downtime_Reason", "")
+                    reason_str = f" · {reason}" if pd.notna(reason) and str(reason).strip() else ""
+                    tooltip = f"{row['Status']}{reason_str} | {start_str}–{end_str} ({int(seg_dur)} min)"
+                    segments_html += f'<div title="{tooltip}" style="position:absolute; left:{left_pct:.2f}%; width:{max(width_pct, 0.3):.2f}%; background:{color}; height:100%; border-right:1px solid #000000; box-sizing:border-box;"></div>'
 
-                    with cols[i]:
-                        st.markdown(f"""
-                            <div style="background:#1e2130; border-radius:10px; padding:14px 18px; margin-bottom:10px; border-left:5px solid {util_color};">
-                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                                    <div style="font-size:14px; font-weight:bold; color:#ffffff;">{machine}</div>
-                                    <div style="font-size:12px; color:#aaaaaa;">Utilization: <b style="color:{util_color};">{m_util}%</b> &nbsp;·&nbsp; Total: {int(m_total)} min</div>
-                                </div>
-                                {axis_html}
-                                <div style="position:relative; height:28px; background:#2c2f3e; border-radius:5px; overflow:hidden;">
-                                    {segments_html}
-                                </div>
-                            </div>
-                        """, unsafe_allow_html=True)
+                st.markdown(f"""
+                    <div style="display:flex; align-items:center; margin-bottom:6px;">
+                        <div style="width:85px; min-width:85px; font-size:12px; color:#cccccc; font-weight:bold; padding-right:8px; text-align:right;">{machine}</div>
+                        <div style="flex:1; position:relative; height:22px; background:#2c2f3e; border-radius:4px; overflow:hidden;">
+                            {segments_html}
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
 
-            # Legend
-            tl_legend_html = '<div style="display:flex; gap:16px; flex-wrap:wrap; margin-top:4px; margin-bottom:8px;">'
+            # Legend (reuse same STATUS_COLORS)
+            tl_legend_html = '<div style="display:flex; gap:16px; flex-wrap:wrap; margin-top:8px; margin-left:90px;">'
             for status, color in STATUS_COLORS.items():
                 tl_legend_html += f'<span style="font-size:12px; color:#aaaaaa;"><span style="display:inline-block; width:12px; height:12px; background:{color}; border-radius:2px; margin-right:4px;"></span>{status}</span>'
             tl_legend_html += '</div>'
@@ -514,7 +537,7 @@ elif st.session_state.page == "viewer":
         running_machines = filtered_df[filtered_status == "UP_PRODUCT"]["Machine_ID"].str.strip().nunique()
         box1_title = "Machines Running"
         box1_ratio = round((running_machines / total_machines) * 100) if total_machines > 0 else 0
-        box1_color = get_pct_color(box1_ratio)
+        box1_color = get_util_color(box1_ratio, st.session_state.util_threshold)
         box1_desc = f"Currently producing · {shift_label}"
         box1_value_html = f'<span style="color:{box1_color};">{running_machines}</span><span style="color:#ffffff;"> of {total_machines}</span>'
     else:
@@ -527,7 +550,7 @@ elif st.session_state.page == "viewer":
     total_duration = filtered_df["Duration_Min"].sum()
     up_duration = filtered_df[filtered_status == "UP_PRODUCT"]["Duration_Min"].sum()
     avg_util = round((up_duration / total_duration) * 100) if total_duration > 0 else 0
-    box2_color = get_pct_color(avg_util)
+    box2_color = get_util_color(avg_util, st.session_state.util_threshold)
 
     # Box 3: Shift downtime = not UP_PRODUCT and not IDLE
     shift_downtime = int(filtered_df[~filtered_status.isin(["UP_PRODUCT", "IDLE"])]["Duration_Min"].sum())
