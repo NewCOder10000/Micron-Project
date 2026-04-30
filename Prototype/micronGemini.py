@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
-from google import genai
+import google.generativeai as genai
 
 st.set_page_config(page_title="Micron Streamlit Dummy", layout="wide")
 
