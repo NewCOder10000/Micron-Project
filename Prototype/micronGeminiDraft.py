@@ -234,37 +234,54 @@ if st.session_state.df is not None and st.session_state.page != "upload":
             st.rerun()
         st.divider()
 
-        # ── UTILISATION THRESHOLD ──────────────────────────────────────────
+        # ── UTILISATION THRESHOLD (fixed initialization + sync) ─────────────────
         st.markdown("### 🎯 Utilisation Threshold")
 
+        # canonical default (single source of truth)
+        st.session_state.setdefault("util_threshold", 95)
+        st.session_state.setdefault("_thresh_slider", int(st.session_state["util_threshold"]))
+        st.session_state.setdefault("_thresh_input", int(st.session_state["util_threshold"]))
+
         def _sync_from_slider():
-            st.session_state._thresh_input = st.session_state._thresh_slider
+            val = int(st.session_state["_thresh_slider"])
+            # update the other widget and canonical value
+            st.session_state["_thresh_input"] = val
+            st.session_state["util_threshold"] = val
 
         def _sync_from_input():
-            val = max(0, min(100, int(st.session_state._thresh_input)))
-            st.session_state._thresh_slider = val
-            st.session_state._thresh_input = val
+            val = max(0, min(100, int(st.session_state["_thresh_input"])))
+            st.session_state["_thresh_input"] = val
+            st.session_state["_thresh_slider"] = val
+            st.session_state["util_threshold"] = val
 
+        # Render widgets with explicit value= from session_state so browser-restored states
+        # do not silently override what Python expects.
         st.slider(
             "Threshold (%)",
-            min_value=0, max_value=100, step=1,
+            min_value=0,
+            max_value=100,
+            step=1,
+            value=int(st.session_state["_thresh_slider"]),
             key="_thresh_slider",
             on_change=_sync_from_slider,
             label_visibility="collapsed",
         )
+
         _, inp_col = st.columns([1, 1])
         with inp_col:
             st.number_input(
                 "Manual input",
-                min_value=0, max_value=100, step=1,
+                min_value=0,
+                max_value=100,
+                step=1,
+                value=int(st.session_state["_thresh_input"]),
                 key="_thresh_input",
                 on_change=_sync_from_input,
                 label_visibility="collapsed",
             )
 
-        # Derive threshold from slider on every render — no stale state
-        st.session_state.util_threshold = st.session_state._thresh_slider
-        st.caption(f"🟢 ≥ {st.session_state.util_threshold}%  🔴 < {st.session_state.util_threshold}%")
+        # Always use the canonical value for display / logic
+        st.caption(f"🟢 ≥ {st.session_state['util_threshold']}%  🔴 < {st.session_state['util_threshold']}%")
         st.divider()
 
 # ── PAGE: OVERVIEW ─────────────────────────────────────────────────────────────
