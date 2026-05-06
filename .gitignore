@@ -1,5 +1,5 @@
 # Streamlit secrets (IMPORTANT)
-.streamlit/secrets.toml
+**/.streamlit/secrets.toml
 
 # Environment files
 .env
