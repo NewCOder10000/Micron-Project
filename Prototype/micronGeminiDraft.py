@@ -357,7 +357,7 @@ if st.session_state.page == "overview":
 
     STATUS_COLORS = {
         "UP_PRODUCT": "#008000",
-        "IDLE":       "#0000FF",
+        "IDLE":       "#5F5FFF",
         "WAIT_REPAIR":"#FF0000",
         "IN_REPAIR":  "#FF0000",
         "WAIT_PM":    "#FFC0CB",
@@ -593,11 +593,13 @@ elif st.session_state.page == "viewer":
         colored_metric("Total (Fault) Repair Time", f"{total_repair} min", "When status is WAIT_REPAIR or IN_REPAIR", "#ffffff")
 
     st.divider()
-
-    st.markdown(f"**Rows:** {filtered_df.shape[0]} | **Columns:** {filtered_df.shape[1]}")
-    display_df = filtered_df.reset_index(drop=True)
-    display_df.index += 1
-    st.dataframe(display_df, use_container_width=True)
+    # Optional: only show raw data when explicitly requested
+    show_raw = st.sidebar.checkbox("Show raw data (dashboard)", value=False, help="Enable to view the filtered rows/columns on the dashboard")
+    if show_raw:
+        st.markdown(f"**Rows:** {filtered_df.shape[0]} | **Columns:** {filtered_df.shape[1]}")
+        display_df = filtered_df.reset_index(drop=True)
+        display_df.index += 1
+        st.dataframe(display_df, use_container_width=True)
 
     # ── AI SUMMARY ────────────────────────────────────────────────────────────
     summary_key = f"{selected_machine}__{st.session_state.selected_shift}"
