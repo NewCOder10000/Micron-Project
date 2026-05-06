@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 import os
-from google import genai
-
+import google.genai as genai
+## hello
 st.set_page_config(page_title="Micron Streamlit Dummy", layout="wide")
 
 DATASET_FOLDER = os.path.join(os.path.dirname(__file__), '..', 'Datasets')
