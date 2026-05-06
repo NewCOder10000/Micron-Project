@@ -28,8 +28,8 @@ if "_thresh_slider" not in st.session_state:
 if "_thresh_input" not in st.session_state:
     st.session_state._thresh_input = 95
 
-GEMINI_API_KEY = "AIzaSyB7vF_GEjsbdDg0cdcUVzjLeIm57ZgNcRE"
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+GEMINI_MODEL = st.secrets["GEMINI_MODEL"]
 
 @st.cache_resource
 def get_gemini_client():
