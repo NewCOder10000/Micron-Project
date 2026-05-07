@@ -4,10 +4,13 @@ import os
 import google.genai as genai
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
+from datetime import datetime
 
 st.set_page_config(page_title="Micron Streamlit Dummy", layout="wide")
 
 DATASET_FOLDER = os.path.join(os.path.dirname(__file__), '..', 'Datasets')
+
+now = datetime.now().strftime("%d-%m-%Y")
 
 if "page" not in st.session_state:
     st.session_state.page = "upload"
@@ -29,6 +32,8 @@ if "_thresh_slider" not in st.session_state:
     st.session_state._thresh_slider = 95
 if "_thresh_input" not in st.session_state:
     st.session_state._thresh_input = 95
+if "overview_machine" not in st.session_state:
+    st.session_state.overview_machine = "All"
 
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 GEMINI_MODEL = st.secrets["GEMINI_MODEL"]
@@ -230,60 +235,6 @@ if st.session_state.df is not None and st.session_state.page != "upload":
                      type="primary" if st.session_state.page == "overview" else "secondary"):
             st.session_state.page = "overview"
             st.rerun()
-        if st.button("📊 Dashboard", use_container_width=True,
-                     type="primary" if st.session_state.page == "viewer" else "secondary"):
-            st.session_state.page = "viewer"
-            st.rerun()
-        st.divider()
-
-        # ── UTILISATION THRESHOLD (fixed initialization + sync) ─────────────────
-        st.markdown("### 🎯 Utilisation Threshold")
-
-        # canonical default (single source of truth)
-        st.session_state.setdefault("util_threshold", 95)
-        st.session_state.setdefault("_thresh_slider", int(st.session_state["util_threshold"]))
-        st.session_state.setdefault("_thresh_input", int(st.session_state["util_threshold"]))
-
-        def _sync_from_slider():
-            val = int(st.session_state["_thresh_slider"])
-            # update the other widget and canonical value
-            st.session_state["_thresh_input"] = val
-            st.session_state["util_threshold"] = val
-
-        def _sync_from_input():
-            val = max(0, min(100, int(st.session_state["_thresh_input"])))
-            st.session_state["_thresh_input"] = val
-            st.session_state["_thresh_slider"] = val
-            st.session_state["util_threshold"] = val
-
-        # Render widgets with explicit value= from session_state so browser-restored states
-        # do not silently override what Python expects.
-        st.slider(
-            "Threshold (%)",
-            min_value=0,
-            max_value=100,
-            step=1,
-            value=int(st.session_state["_thresh_slider"]),
-            key="_thresh_slider",
-            on_change=_sync_from_slider,
-            label_visibility="collapsed",
-        )
-
-        _, inp_col = st.columns([1, 1])
-        with inp_col:
-            st.number_input(
-                "Manual input",
-                min_value=0,
-                max_value=100,
-                step=1,
-                value=int(st.session_state["_thresh_input"]),
-                key="_thresh_input",
-                on_change=_sync_from_input,
-                label_visibility="collapsed",
-            )
-
-        # Always use the canonical value for display / logic
-        st.caption(f"🟢 ≥ {st.session_state['util_threshold']}%  🔴 < {st.session_state['util_threshold']}%")
         st.divider()
 
 # ── PAGE: OVERVIEW ─────────────────────────────────────────────────────────────
@@ -297,29 +248,37 @@ if st.session_state.page == "overview":
 
     st.title("FabSight - Shift Performance Dashboard")
     st.write("By Uptime Guardians")
+    st.markdown(now)
     st.title(f"📋 Overview - {st.session_state.filename}")
 
+    # ── SHIFT + MACHINE SELECTORS ────────────────────────────────────────────
+    shift_options = {
+        "All": "total",
+        "Day": "day",
+        "Night": "night",
+    }
+
+    current_shift_label = next(
+        label for label, value in shift_options.items()
+        if value == st.session_state.overview_shift
+    )
+
+    selector_col1, selector_col2, selector_col3 = st.columns([1, 1, 3])
+
+    with selector_col1:
+        selected_shift_label = st.selectbox(
+            "Select Shift",
+            options=list(shift_options.keys()),
+            index=list(shift_options.keys()).index(current_shift_label),
+            key="overview_shift_select",
+        )
+
+    st.session_state.overview_shift = shift_options[selected_shift_label]
     ov_active = st.session_state.overview_shift
-    _, ov_col1, ov_col2, ov_col3, _ = st.columns([1.5, 1, 1, 1, 1.5])
-    with ov_col1:
-        lbl = "🕐 Total (1440 min)" + (" ✔" if ov_active == "total" else "")
-        if st.button(lbl, key="ov_btn_total", use_container_width=True):
-            st.session_state.overview_shift = "total"
-            st.rerun()
-    with ov_col2:
-        lbl = "☀️ Day (720 min)" + (" ✔" if ov_active == "day" else "")
-        if st.button(lbl, key="ov_btn_day", use_container_width=True):
-            st.session_state.overview_shift = "day"
-            st.rerun()
-    with ov_col3:
-        lbl = "🌙 Night (720 min)" + (" ✔" if ov_active == "night" else "")
-        if st.button(lbl, key="ov_btn_night", use_container_width=True):
-            st.session_state.overview_shift = "night"
-            st.rerun()
 
-    st.write("")
-
+    # Apply shift filter first
     hour = df["Start_Time"].dt.hour
+
     if ov_active == "day":
         ov_df = df[(hour >= 7) & (hour < 19)].copy()
     elif ov_active == "night":
@@ -327,11 +286,38 @@ if st.session_state.page == "overview":
     else:
         ov_df = df.copy()
 
+    # Machine selector is based on filtered shift data
+    machine_options = ["All"] + sorted(
+        ov_df["Machine_ID"].dropna().unique().tolist()
+    )
+
+    if st.session_state.overview_machine not in machine_options:
+        st.session_state.overview_machine = "All"
+
+    with selector_col2:
+        selected_machine = st.selectbox(
+            "Select Machine",
+            options=machine_options,
+            index=machine_options.index(st.session_state.overview_machine),
+            key="overview_machine_select",
+        )
+
+    st.session_state.overview_machine = selected_machine
+
+    # Apply machine filter after shift filter
+    if selected_machine != "All":
+        ov_df = ov_df[ov_df["Machine_ID"] == selected_machine].copy()
+
+    st.write("")
+
     ov_shift_label = {
-        "total": "Total Shift (Day & Night)",
+        "total": "All Shifts",
         "day":   "Day Shift (07:00 – 19:00)",
         "night": "Night Shift (19:00 – 07:00)",
     }[ov_active]
+
+    if selected_machine != "All":
+        ov_shift_label = f"{ov_shift_label} · {selected_machine}"
 
     total_machines = ov_df["Machine_ID"].nunique()
     total_dur = ov_df["Duration_Min"].sum()
@@ -342,20 +328,158 @@ if st.session_state.page == "overview":
     fleet_pm = int(ov_df[ov_df["Status"].isin(["WAIT_PM", "IN_PM"])]["Duration_Min"].sum())
 
     st.markdown(f"#### Fleet Summary · {ov_shift_label}")
+    # ── Additional Fleet Metrics ────────────────────────────────────────────────
+    machines_running = ov_df[ov_df["Status"] == "UP_PRODUCT"]["Machine_ID"].nunique()
+    total_downtime = int(ov_df[ov_df["Status"] != "UP_PRODUCT"]["Duration_Min"].sum())
+
+    # Row 1: 4 boxes
     fc1, fc2, fc3, fc4 = st.columns(4)
+
     with fc1:
-        colored_metric("Fleet Utilization", f"{fleet_util}%", f"UP_PRODUCT across {total_machines} machines", get_util_color(fleet_util, st.session_state.util_threshold))
+        colored_metric(
+            "Fleet Utilization",
+            f"{fleet_util}%",
+            f"UP_PRODUCT across {total_machines} machines",
+            get_util_color(fleet_util, st.session_state.util_threshold)
+        )
+
     with fc2:
-        metric_box("Total Repair Time", f"{fleet_repair} min", "WAIT_REPAIR + IN_REPAIR")
+        if selected_machine != "All":
+            # For individual machine view
+            machine_status = "Active" if fleet_util > 0 else "Inactive"
+            machine_status_color = "#2ecc71" if fleet_util > 0 else "#e74c3c"
+
+            html_metric(
+                "Machine Status",
+                f'<span style="color:{machine_status_color};">{machine_status}</span>',
+                f"Utilization: {fleet_util}%"
+            )
+
+        else:
+            # For All machines view
+            running_pct = (machines_running / total_machines) * 100 if total_machines > 0 else 0
+            running_color = "#2ecc71" if running_pct >= 50 else "#e74c3c"
+
+            html_metric(
+                "Machines Running",
+                f'<span style="color:{running_color};">{machines_running}</span> '
+                f'<span style="color:#ffffff;">out of {total_machines}</span>',
+                "Machines with UP_PRODUCT activity"
+            )
+
     with fc3:
-        metric_box("Total Idle Time", f"{fleet_idle} min", "IDLE status across all machines")
+        metric_box(
+            "Total Downtime",
+            f"{total_downtime} min",
+            "All non-UP_PRODUCT time"
+        )
+
     with fc4:
-        metric_box("Total PM Time", f"{fleet_pm} min", "WAIT_PM + IN_PM")
+        metric_box(
+            "Total Repair Time",
+            f"{fleet_repair} min",
+            "WAIT_REPAIR + IN_REPAIR"
+        )
+
+    st.write("")
+
+    # Row 2: 4 boxes
+    fc5, fc6, fc7, fc8 = st.columns(4)
+
+    with fc5:
+        metric_box(
+            "Total Idle Time",
+            f"{fleet_idle} min",
+            "IDLE status across all machines"
+        )
+
+    with fc6:
+        metric_box(
+            "Total PM Time",
+            f"{fleet_pm} min",
+            "WAIT_PM + IN_PM"
+        )
+
+    with fc7:
+        metric_box(
+            "Placeholder",
+            "-",
+            "Reserved for future metric"
+        )
+
+    with fc8:
+        metric_box(
+            "Placeholder",
+            "-",
+            "Reserved for future metric"
+        )
 
     st.divider()
 
-    st.markdown("#### Machine Performance")
-    st.write("(Worst to best)")
+    # ── UTILISATION THRESHOLD ON OVERVIEW PAGE ───────────────────────────────
+    st.markdown("#### 🎯 Utilisation Threshold")
+
+    st.session_state.setdefault("util_threshold", 95)
+    st.session_state.setdefault("_thresh_slider", int(st.session_state["util_threshold"]))
+    st.session_state.setdefault("_thresh_input", int(st.session_state["util_threshold"]))
+
+    def _sync_from_slider():
+        val = int(st.session_state["_thresh_slider"])
+        st.session_state["_thresh_input"] = val
+        st.session_state["util_threshold"] = val
+
+    def _sync_from_input():
+        val = max(0, min(100, int(st.session_state["_thresh_input"])))
+        st.session_state["_thresh_input"] = val
+        st.session_state["_thresh_slider"] = val
+        st.session_state["util_threshold"] = val
+
+    th_col1, th_col2, th_col3 = st.columns([3, 1, 2])
+
+    with th_col1:
+        st.slider(
+            "Threshold (%)",
+            min_value=0,
+            max_value=100,
+            step=1,
+            value=int(st.session_state["_thresh_slider"]),
+            key="_thresh_slider",
+            on_change=_sync_from_slider,
+        )
+
+    with th_col2:
+        st.number_input(
+            "Manual input",
+            min_value=0,
+            max_value=100,
+            step=1,
+            value=int(st.session_state["_thresh_input"]),
+            key="_thresh_input",
+            on_change=_sync_from_input,
+        )
+
+    with th_col3:
+        st.markdown(
+            f"""
+            <div style="
+                background-color:#1e2130;
+                border-radius:10px;
+                padding:14px 18px;
+                margin-top:24px;
+                border-left:5px solid #4a9eff;
+            ">
+                <span style="color:#2ecc71; font-weight:bold;">🟢 ≥ {st.session_state['util_threshold']}%</span>
+                <br>
+                <span style="color:#e74c3c; font-weight:bold;">🔴 &lt; {st.session_state['util_threshold']}%</span>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    # ── MACHINE PERFORMANCE TIMELINE ──────────────────────────────────────────
+    st.divider()
+    st.markdown("#### Machine Performance Timeline")
+    st.write("Chronological status timeline per machine · hover for details")
 
     STATUS_COLORS = {
         "UP_PRODUCT": "#008000",
@@ -384,41 +508,6 @@ if st.session_state.page == "overview":
         m_pm = int(mdf[mdf["Status"].isin(["WAIT_PM", "IN_PM"])]["Duration_Min"].sum())
         util_color = get_util_color(m_util, st.session_state.util_threshold)
 
-        bar_segments = ""
-        for status, color in STATUS_COLORS.items():
-            s_dur = mdf[mdf["Status"] == status]["Duration_Min"].sum()
-            s_pct = (s_dur / m_total * 100) if m_total > 0 else 0
-            if s_pct > 0:
-                bar_segments += f'<div title="{status}: {int(s_dur)} min ({s_pct:.1f}%)" style="width:{s_pct:.1f}%; background:{color}; height:100%; display:inline-block; border-right:2px solid #000000; box-sizing:border-box;"></div>'
-
-        st.markdown(f"""
-            <div style="background:#1e2130; border-radius:10px; padding:16px 20px; margin-bottom:12px; border-left:5px solid {util_color};">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                    <div style="font-size:16px; font-weight:bold; color:#ffffff;">{machine}</div>
-                    <div style="display:flex; gap:24px;">
-                        <span style="font-size:13px; color:#aaaaaa;">Utilization: <b style="color:{util_color};">{m_util}%</b></span>
-                        <span style="font-size:13px; color:#aaaaaa;">Repair: <b style="color:#FF0000;">{m_repair} min</b></span>
-                        <span style="font-size:13px; color:#aaaaaa;">Idle: <b style="color:#0000FF;">{m_idle} min</b></span>
-                        <span style="font-size:13px; color:#aaaaaa;">PM: <b style="color:#FFC0CB;">{m_pm} min</b></span>
-                    </div>
-                </div>
-                <div style="width:100%; height:14px; background:#2c2f3e; border-radius:6px; overflow:hidden;">
-                    {bar_segments}
-                </div>
-                <div style="font-size:10px; color:#555; margin-top:4px;">Hover segments for details · Total: {int(m_total)} min</div>
-            </div>
-        """, unsafe_allow_html=True)
-
-    legend_html = '<div style="display:flex; gap:16px; flex-wrap:wrap; margin-top:8px;">'
-    for status, color in STATUS_COLORS.items():
-        legend_html += f'<span style="font-size:12px; color:#aaaaaa;"><span style="display:inline-block; width:12px; height:12px; background:{color}; border-radius:2px; margin-right:4px;"></span>{status}</span>'
-    legend_html += '</div>'
-    st.markdown(legend_html, unsafe_allow_html=True)
-
-    # ── MACHINE PERFORMANCE TIMELINE ──────────────────────────────────────────
-    st.divider()
-    st.markdown("#### Machine Performance Timeline")
-    st.write("Chronological status timeline per machine · hover for details")
 
     tl_df = ov_df.copy()
     tl_df = tl_df.dropna(subset=["Start_Time", "End_Time"])
@@ -465,7 +554,7 @@ if st.session_state.page == "overview":
                     end_str = row["End_Time"].strftime("%H:%M") if pd.notna(row["End_Time"]) else "?"
                     reason = row.get("Downtime_Reason", "")
                     reason_str = f" · {reason}" if pd.notna(reason) and str(reason).strip() else ""
-                    tooltip = f"{row['Status']}{reason_str} | {start_str}–{end_str} ({int(seg_dur)} min)"
+                    tooltip = f"{row['Status']}{reason_str} | {now} {start_str}–{end_str} ({int(seg_dur)} min)"
                     segments_html += f'<div title="{tooltip}" style="position:absolute; left:{left_pct:.2f}%; width:{max(width_pct, 0.3):.2f}%; background:{color}; height:100%; border-right:1px solid #000000; box-sizing:border-box;"></div>'
 
                 st.markdown(f"""
@@ -484,12 +573,9 @@ if st.session_state.page == "overview":
             tl_legend_html += '</div>'
             st.markdown(tl_legend_html, unsafe_allow_html=True)
 
-    st.markdown("""
-    <div style="
-        margin: 22px 0 12px 0;
-        border-top: 2px solid rgba(255, 255, 255, 0.15);
-    "></div>
-    """, unsafe_allow_html=True)
+    ### Stupid bar graph
+    st.markdown("#### Machine Performance")
+    st.write("PLEASE SHUT UP I GO DIE!")
 
 # ── UTILIZATION CALC ─────────────────────────────────────────
     ov_df["Machine_ID"] = ov_df["Machine_ID"].astype(str).str.strip()
