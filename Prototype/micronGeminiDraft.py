@@ -433,23 +433,10 @@ if st.session_state.page == "overview":
             "WAIT_PM + IN_PM"
         )
 
-    with fc7:
-        metric_box(
-            "Placeholder",
-            "-",
-            "Reserved for future metric"
-        )
-
-    with fc8:
-        metric_box(
-            "Placeholder",
-            "-",
-            "Reserved for future metric"
-        )
-
     st.divider()
 
     # ── UTILISATION THRESHOLD ON OVERVIEW PAGE ───────────────────────────────
+    st.divider()
     st.markdown("#### 🎯 Utilisation Threshold")
 
     st.session_state.setdefault("util_threshold", 95)
@@ -467,7 +454,7 @@ if st.session_state.page == "overview":
         st.session_state["_thresh_slider"] = val
         st.session_state["util_threshold"] = val
 
-    th_col1, th_col2, th_col3 = st.columns([3, 1, 2])
+    th_col1, th_col2 = st.columns([2, 1])
 
     with th_col1:
         st.slider(
@@ -480,7 +467,6 @@ if st.session_state.page == "overview":
             on_change=_sync_from_slider,
         )
 
-    with th_col2:
         st.number_input(
             "Manual input",
             min_value=0,
@@ -491,19 +477,29 @@ if st.session_state.page == "overview":
             on_change=_sync_from_input,
         )
 
-    with th_col3:
+    with th_col2:
         st.markdown(
             f"""
             <div style="
                 background-color:#1e2130;
-                border-radius:10px;
-                padding:14px 18px;
-                margin-top:24px;
+                border-radius:12px;
+                padding:22px 24px;
+                margin-top:28px;
                 border-left:5px solid #4a9eff;
+                min-height:92px;
+                display:flex;
+                flex-direction:column;
+                justify-content:center;
+                gap:10px;
+                justify-content:center;
+                align-items:center;
             ">
-                <span style="color:#2ecc71; font-weight:bold;">🟢 ≥ {st.session_state['util_threshold']}%</span>
-                <br>
-                <span style="color:#e74c3c; font-weight:bold;">🔴 &lt; {st.session_state['util_threshold']}%</span>
+                <div style="color:#2ecc71; font-weight:bold; font-size:15px;">
+                    🟢 ≥ {st.session_state['util_threshold']}%
+                </div>
+                <div style="color:#e74c3c; font-weight:bold; font-size:15px;">
+                    🔴 &lt; {st.session_state['util_threshold']}%
+                </div>
             </div>
             """,
             unsafe_allow_html=True
