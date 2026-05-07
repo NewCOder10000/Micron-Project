@@ -5,6 +5,7 @@ import google.genai as genai
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from datetime import datetime
+import shutil
 
 st.set_page_config(page_title="Micron Streamlit Dummy", layout="wide")
 
@@ -48,6 +49,32 @@ def get_gemini_client():
     )
 
 # ── HELPER FUNCTIONS ───────────────────────────────────────────────────────────
+def clear_dataset_folder():
+    os.makedirs(DATASET_FOLDER, exist_ok=True)
+    for item in os.listdir(DATASET_FOLDER):
+        item_path = os.path.join(DATASET_FOLDER, item)
+        try:
+            if os.path.isfile(item_path) or os.path.islink(item_path):
+                os.remove(item_path)
+            elif os.path.isdir(item_path):
+                shutil.rmtree(item_path)
+        except Exception as e:
+            st.warning(f"Could not remove {item}: {e}")
+
+def read_uploaded_dataset(uploaded_file):
+    filename = uploaded_file.name.lower()
+
+    if filename.endswith(".csv"):
+        return pd.read_csv(uploaded_file)
+
+    if filename.endswith(".xlsx"):
+        return pd.read_excel(uploaded_file, engine="openpyxl")
+
+    if filename.endswith(".xls"):
+        return pd.read_excel(uploaded_file, engine="xlrd")
+
+    raise ValueError("Unsupported file type. Please upload a CSV, XLSX, or XLS file.")
+
 def metric_box(title, value, desc):
     st.markdown(f"""
         <div style="
@@ -963,29 +990,37 @@ elif st.session_state.page == "viewer":
 
 # ── PAGE: UPLOADER ────────────────────────────────────────────────────────────
 elif st.session_state.page == "upload":
-    st.title("Upload Excel File")
-    st.markdown("Upload your Excel file below to get started.")
+    st.title("Upload Excel or CSV File")
+    st.markdown("Upload your Excel or CSV file below to get started.")
 
-    uploaded_file = st.file_uploader("Choose an Excel file", type=["xlsx", "xls"])
+    uploaded_file = st.file_uploader(
+        "Choose an Excel or CSV file",
+        type=["xlsx", "xls", "csv"]
+    )
 
     if uploaded_file is not None:
         st.success(f"✅ File uploaded: **{uploaded_file.name}**")
 
         os.makedirs(DATASET_FOLDER, exist_ok=True)
         save_path = os.path.join(DATASET_FOLDER, uploaded_file.name)
+
         with open(save_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
+
         st.success(f"💾 Saved to: `{save_path}`")
 
         try:
-            df = pd.read_excel(uploaded_file)
+            uploaded_file.seek(0)
+            df = read_uploaded_dataset(uploaded_file)
+
             st.session_state.df = df
             st.session_state.filename = uploaded_file.name
             st.session_state.page = "overview"
             st.rerun()
+
         except Exception as e:
             st.error(f"Error reading file: {e}")
     else:
-        st.info("👆 Please upload an Excel file to continue.")
+        st.info("👆 Please upload an Excel or CSV file to continue.")
 
 #testing
