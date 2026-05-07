@@ -34,6 +34,8 @@ if "_thresh_input" not in st.session_state:
     st.session_state._thresh_input = 95
 if "overview_machine" not in st.session_state:
     st.session_state.overview_machine = "All"
+if "show_dataset" not in st.session_state:
+    st.session_state.show_dataset = False
 
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 GEMINI_MODEL = st.secrets["GEMINI_MODEL"]
@@ -639,6 +641,27 @@ if st.session_state.page == "overview":
         "</div>",
         unsafe_allow_html=True
     )
+
+    # ── DATASET PREVIEW SECTION ──────────────────────────────────────────────
+    st.divider()
+    st.markdown("#### 📊 Dataset Preview")
+
+    if st.button(
+        "Show Dataset" if not st.session_state.show_dataset else "Hide Dataset",
+        key="toggle_dataset_btn"
+    ):
+        st.session_state.show_dataset = not st.session_state.show_dataset
+        st.rerun()
+
+    if st.session_state.show_dataset:
+        st.caption("Showing dataset based on current Shift and Machine filters.")
+        st.dataframe(
+            ov_df,
+            use_container_width=True,
+            hide_index=True
+    )
+    else:
+        st.info("Dataset preview is hidden. Click **Show Dataset** to view it.")
 
     # ── AI SUMMARY SECTION ───────────────────────────────────────────────────
     if not ov_df.empty:
