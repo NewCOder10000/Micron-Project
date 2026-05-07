@@ -5,6 +5,7 @@ import google.genai as genai
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from datetime import datetime
+import requests
 
 st.set_page_config(page_title="Micron Streamlit Dummy", layout="wide")
 
@@ -136,68 +137,172 @@ def build_prompt_all(filtered_df, shift_label):
     fdf["Status"] = fdf["Status"].str.strip()
     fdf["Machine_ID"] = fdf["Machine_ID"].str.strip()
 
-    machine_util = {}
-    for mid, mdf in fdf.groupby("Machine_ID"):
-        tot = mdf["Duration_Min"].sum()
-        up = mdf[mdf["Status"] == "UP_PRODUCT"]["Duration_Min"].sum()
-        machine_util[mid] = round((up / tot) * 100) if tot > 0 else 0
-    worst_machine = min(machine_util, key=machine_util.get)
-    worst_util = machine_util[worst_machine]
-    worst_downtime = int(fdf[(fdf["Machine_ID"] == worst_machine) & (fdf["Status"] != "UP_PRODUCT")]["Duration_Min"].sum())
+    total_duration = fdf["Duration_Min"].sum()
 
+    # IN_REPAIR alarm / fault frequency
+    in_repair_df = fdf[fdf["Status"] == "IN_REPAIR"]
+    alarm_series = in_repair_df["Downtime_Reason"].dropna().astype(str).str.strip()
+    alarm_series = alarm_series[alarm_series != ""]
+    top_alarms = alarm_series.value_counts().head(5)
+    top_alarms_str = ", ".join(
+        [f"{reason} ({count} occurrences)" for reason, count in top_alarms.items()]
+    ) if not top_alarms.empty else "No IN_REPAIR fault types recorded"
+
+    # Repair duration comparison
+    in_repair_min = int(fdf[fdf["Status"] == "IN_REPAIR"]["Duration_Min"].sum())
+    wait_repair_min = int(fdf[fdf["Status"] == "WAIT_REPAIR"]["Duration_Min"].sum())
+
+    # WAIT_PM and WAIT_REPAIR percentage
+    wait_pm_min = int(fdf[fdf["Status"] == "WAIT_PM"]["Duration_Min"].sum())
+    wait_repair_pct = round((wait_repair_min / total_duration) * 100, 1) if total_duration > 0 else 0
+    wait_pm_pct = round((wait_pm_min / total_duration) * 100, 1) if total_duration > 0 else 0
+
+    # Non-machine failures
+    non_machine_df = fdf[fdf["Status"].isin(["WAIT_REPAIR", "WAIT_PM"])]
+    non_machine_reasons = non_machine_df["Downtime_Reason"].dropna().astype(str).str.strip()
+    non_machine_reasons = non_machine_reasons[non_machine_reasons != ""]
+    top_non_machine = non_machine_reasons.value_counts().head(5)
+    top_non_machine_str = ", ".join(
+        [f"{reason} ({count} occurrences)" for reason, count in top_non_machine.items()]
+    ) if not top_non_machine.empty else "No people or parts delay reasons recorded"
+
+    # Top 20% downtime contributors
     downtime_df = fdf[fdf["Status"] != "UP_PRODUCT"]
-    reason_series = downtime_df["Downtime_Reason"].dropna().str.strip()
-    reason_series = reason_series[reason_series != ""]
-    top3 = reason_series.value_counts().head(3)
-    top3_str = ", ".join([f"{r} ({c} occurrences)" for r, c in top3.items()]) if not top3.empty else "No downtime reasons recorded"
+    machine_downtime = downtime_df.groupby("Machine_ID")["Duration_Min"].sum().sort_values(ascending=False)
+    top_20_count = max(1, round(len(machine_downtime) * 0.2)) if len(machine_downtime) > 0 else 0
+    top_20 = machine_downtime.head(top_20_count)
+    top_20_str = ", ".join(
+        [f"{machine} ({int(duration)} min)" for machine, duration in top_20.items()]
+    ) if not top_20.empty else "No downtime contributors recorded"
 
-    prompt = f"""You are a shift supervisor writing a concise handover note. Be factual and direct — no motivational phrases, no filler sentences, no conclusions like "let's get it back up" or "our process needs fine-tuning". Just clear, useful observations and actions.
+    # Spare parts shortage flags
+    spare_keywords = ["part", "parts", "spare", "material", "component", "stock"]
+    spare_df = downtime_df[
+        downtime_df["Downtime_Reason"].fillna("").astype(str).str.lower().str.contains(
+            "|".join(spare_keywords)
+        )
+    ]
+    spare_flags = spare_df.groupby("Machine_ID")["Duration_Min"].sum().sort_values(ascending=False)
+    spare_flags_str = ", ".join(
+        [f"{machine} ({int(duration)} min)" for machine, duration in spare_flags.items()]
+    ) if not spare_flags.empty else "No spare parts shortage signals found"
+
+    prompt = f"""
+Generate structured shift-summary bullet points covering 7 insight areas:
+1. Alarm frequency, focusing on the highest-occurrence IN_REPAIR fault types.
+2. IN_REPAIR vs WAIT_REPAIR duration analysis.
+3. Percentage of time in WAIT_PM and WAIT_REPAIR per shift.
+4. Manpower shortage signals from WAIT_REPAIR and WAIT_PM dominance.
+5. Non-machine failures, including people and parts delays.
+6. Top 20% downtime contributors.
+7. Spare parts shortage flags per machine.
 
 Shift: {shift_label}
-Worst performing machine: {worst_machine} - only {worst_util}% utilization, lost {worst_downtime} minutes to downtime
-Top 3 downtime reasons across all machines: {top3_str}
 
-Write exactly 3 bullet points using • as the bullet symbol. No headers, no extra text, just the 3 bullets.
+Available data:
+- Top IN_REPAIR fault types: {top_alarms_str}
+- IN_REPAIR duration: {in_repair_min} minutes
+- WAIT_REPAIR duration: {wait_repair_min} minutes
+- WAIT_PM duration: {wait_pm_min} minutes
+- WAIT_REPAIR percentage of shift: {wait_repair_pct}%
+- WAIT_PM percentage of shift: {wait_pm_pct}%
+- Top non-machine delay reasons: {top_non_machine_str}
+- Top 20% downtime contributors: {top_20_str}
+- Spare parts shortage flags: {spare_flags_str}
 
-• Bullet 1: State which machine struggled most, its utilization %, and how many minutes were lost. One sentence, factual only.
-• Bullet 2: Explain what the top 3 downtime reasons reveal about what's going wrong on the floor. One to two sentences, no filler.
-• Bullet 3: Give 1-2 specific, actionable things the next shift should do based on the downtime patterns. No motivational language.
-
-IMPORTANT: Do not add any closing remarks, encouragement, or commentary beyond the 3 bullets."""
+Write exactly 7 bullet points using • as the bullet symbol.
+Each bullet point should correspond to one insight area.
+Be factual, direct, and operational.
+Do not add headers.
+Do not add closing remarks.
+Do not use motivational language.
+"""
     return prompt
 
 
 def build_prompt_machine(machine_id, filtered_df, shift_label):
     fdf = filtered_df.copy()
     fdf["Status"] = fdf["Status"].str.strip()
-    mdf = fdf[fdf["Machine_ID"].str.strip() == machine_id]
+    fdf["Machine_ID"] = fdf["Machine_ID"].str.strip()
 
-    tot = mdf["Duration_Min"].sum()
-    up = mdf[mdf["Status"] == "UP_PRODUCT"]["Duration_Min"].sum()
-    util = round((up / tot) * 100) if tot > 0 else 0
-    downtime_min = int(tot - up)
+    mdf = fdf[fdf["Machine_ID"] == machine_id].copy()
+    total_duration = mdf["Duration_Min"].sum()
 
-    downtime_df = mdf[mdf["Status"] != "UP_PRODUCT"]
-    reason_series = downtime_df["Downtime_Reason"].dropna().str.strip()
-    reason_series = reason_series[reason_series != ""]
-    top3 = reason_series.value_counts().head(3)
-    top3_str = ", ".join([f"{r} ({c} occurrences)" for r, c in top3.items()]) if not top3.empty else "No downtime reasons recorded"
+    # IN_REPAIR alarm / fault frequency
+    in_repair_df = mdf[mdf["Status"] == "IN_REPAIR"]
+    alarm_series = in_repair_df["Downtime_Reason"].dropna().astype(str).str.strip()
+    alarm_series = alarm_series[alarm_series != ""]
+    top_alarms = alarm_series.value_counts().head(5)
+    top_alarms_str = ", ".join(
+        [f"{reason} ({count} occurrences)" for reason, count in top_alarms.items()]
+    ) if not top_alarms.empty else "No IN_REPAIR fault types recorded"
 
-    prompt = f"""You are a shift supervisor writing a concise machine handover note. Be factual and direct — no motivational phrases, no filler sentences, no conclusions like "let's improve this" or "we need to fine-tune our process". Just clear, useful observations and actions.
+    # Repair duration comparison
+    in_repair_min = int(mdf[mdf["Status"] == "IN_REPAIR"]["Duration_Min"].sum())
+    wait_repair_min = int(mdf[mdf["Status"] == "WAIT_REPAIR"]["Duration_Min"].sum())
+
+    # WAIT_PM and WAIT_REPAIR percentage
+    wait_pm_min = int(mdf[mdf["Status"] == "WAIT_PM"]["Duration_Min"].sum())
+    wait_repair_pct = round((wait_repair_min / total_duration) * 100, 1) if total_duration > 0 else 0
+    wait_pm_pct = round((wait_pm_min / total_duration) * 100, 1) if total_duration > 0 else 0
+
+    # Non-machine failures
+    non_machine_df = mdf[mdf["Status"].isin(["WAIT_REPAIR", "WAIT_PM"])]
+    non_machine_reasons = non_machine_df["Downtime_Reason"].dropna().astype(str).str.strip()
+    non_machine_reasons = non_machine_reasons[non_machine_reasons != ""]
+    top_non_machine = non_machine_reasons.value_counts().head(5)
+    top_non_machine_str = ", ".join(
+        [f"{reason} ({count} occurrences)" for reason, count in top_non_machine.items()]
+    ) if not top_non_machine.empty else "No people or parts delay reasons recorded"
+
+    # Machine downtime contribution
+    machine_downtime = int(mdf[mdf["Status"] != "UP_PRODUCT"]["Duration_Min"].sum())
+
+    # Spare parts shortage flags
+    spare_keywords = ["part", "parts", "spare", "material", "component", "stock"]
+    spare_df = mdf[
+        mdf["Downtime_Reason"].fillna("").astype(str).str.lower().str.contains(
+            "|".join(spare_keywords)
+        )
+    ]
+    spare_min = int(spare_df["Duration_Min"].sum())
+    spare_reasons = spare_df["Downtime_Reason"].dropna().astype(str).str.strip()
+    spare_reasons = spare_reasons[spare_reasons != ""]
+    spare_reasons_str = ", ".join(spare_reasons.value_counts().head(3).index.tolist()) \
+        if not spare_reasons.empty else "No spare parts shortage signals found"
+
+    prompt = f"""
+Generate structured machine shift-summary bullet points covering 7 insight areas:
+1. Alarm frequency, focusing on the highest-occurrence IN_REPAIR fault types.
+2. IN_REPAIR vs WAIT_REPAIR duration analysis.
+3. Percentage of time in WAIT_PM and WAIT_REPAIR for this shift.
+4. Manpower shortage signals from WAIT_REPAIR and WAIT_PM dominance.
+5. Non-machine failures, including people and parts delays.
+6. Downtime contribution of this machine.
+7. Spare parts shortage flags for this machine.
 
 Machine: {machine_id}
 Shift: {shift_label}
-Utilization: {util}%
-Total downtime: {downtime_min} minutes
-Top 3 downtime reasons: {top3_str}
 
-Write exactly 3 bullet points using • as the bullet symbol. No headers, no extra text, just the 3 bullets.
+Available data:
+- Top IN_REPAIR fault types: {top_alarms_str}
+- IN_REPAIR duration: {in_repair_min} minutes
+- WAIT_REPAIR duration: {wait_repair_min} minutes
+- WAIT_PM duration: {wait_pm_min} minutes
+- WAIT_REPAIR percentage of shift: {wait_repair_pct}%
+- WAIT_PM percentage of shift: {wait_pm_pct}%
+- Top non-machine delay reasons: {top_non_machine_str}
+- Total downtime contribution: {machine_downtime} minutes
+- Spare parts shortage duration: {spare_min} minutes
+- Spare parts shortage reasons: {spare_reasons_str}
 
-• Bullet 1: State the machine's utilization and downtime minutes. One sentence, factual only.
-• Bullet 2: Explain what the top downtime reasons suggest is happening with this machine. One to two sentences, no filler.
-• Bullet 3: Give 1-2 specific, actionable things the next operator should do for this machine. No motivational language.
-
-IMPORTANT: Do not add any closing remarks, encouragement, or commentary beyond the 3 bullets."""
+Write exactly 7 bullet points using • as the bullet symbol.
+Each bullet point should correspond to one insight area.
+Be factual, direct, and operational.
+Do not add headers.
+Do not add closing remarks.
+Do not use motivational language.
+"""
     return prompt
 
 def render_ai_summary_section(summary_key, prompt_fn, *prompt_args):
@@ -228,7 +333,7 @@ def render_ai_summary_section(summary_key, prompt_fn, *prompt_args):
         if lines:
             bullet_html = "<br>".join([
                 f'<div style="margin-bottom:8px;">{line}</div>'
-                for line in lines[:3]
+                for line in lines[:7]
             ])
 
             st.markdown(f"""
