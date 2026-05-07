@@ -30,3 +30,10 @@ if "_thresh_input" not in st.session_state:
 
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 GEMINI_MODEL = st.secrets["GEMINI_MODEL"]
+
+@st.cache_resource
+def get_gemini_client():
+    return genai.Client(
+        api_key=GEMINI_API_KEY,
+        http_options={"timeout": 30},
+    )
