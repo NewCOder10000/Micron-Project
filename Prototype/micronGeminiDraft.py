@@ -641,131 +641,27 @@ if st.session_state.page == "overview":
         unsafe_allow_html=True
     )
 
-# ── PAGE: DATA VIEWER ──────────────────────────────────────────────────────────
-elif st.session_state.page == "viewer":
-    df = st.session_state.df
-
-    with st.sidebar:
-        st.header("🏭 Filter")
-        machine_ids = ["All"] + sorted(df["Machine_ID"].str.strip().unique().tolist())
-        selected_machine = st.selectbox("Machine", options=machine_ids, index=0, label_visibility="visible")
-
-    st.title("FabSight - Shift Performance Dashboard")
-    st.write("By Uptime Guardians")
-
-    active = st.session_state.selected_shift
-    st.markdown(f"""
-        <style>
-        div[data-testid="column"]:nth-of-type(2) button {{
-            {"font-weight: bold; border: 2px solid #ffffff;" if active == "total" else ""}
-        }}
-        div[data-testid="column"]:nth-of-type(3) button {{
-            {"font-weight: bold; border: 2px solid #ffffff;" if active == "day" else ""}
-        }}
-        div[data-testid="column"]:nth-of-type(4) button {{
-            {"font-weight: bold; border: 2px solid #ffffff;" if active == "night" else ""}
-        }}
-        </style>
-    """, unsafe_allow_html=True)
-
-    _, shift_col1, shift_col2, shift_col3, _ = st.columns([1.5, 1, 1, 1, 1.5])
-
-    with shift_col1:
-        label = "🕐 Total (1440 min)" + (" ✔" if active == "total" else "")
-        if st.button(label, key="shift_btn_total", use_container_width=True):
-            st.session_state.selected_shift = "total"
-            st.rerun()
-
-    with shift_col2:
-        label = "☀️ Day (720 min)" + (" ✔" if active == "day" else "")
-        if st.button(label, key="shift_btn_day", use_container_width=True):
-            st.session_state.selected_shift = "day"
-            st.rerun()
-
-    with shift_col3:
-        label = "🌙 Night (720 min)" + (" ✔" if active == "night" else "")
-        if st.button(label, key="shift_btn_night", use_container_width=True):
-            st.session_state.selected_shift = "night"
-            st.rerun()
-
-    st.write("")
-
-    if selected_machine == "All":
-        filtered_df = df.copy()
+    # ── AI SUMMARY SECTION ───────────────────────────────────────────────────
+    if not ov_df.empty:
+        if selected_machine == "All":
+            summary_key = f"overview_{ov_active}_all"
+            render_ai_summary_section(
+                summary_key,
+                build_prompt_all,
+                ov_df,
+                ov_shift_label
+            )
+        else:
+            summary_key = f"overview_{ov_active}_{selected_machine}"
+            render_ai_summary_section(
+                summary_key,
+                build_prompt_machine,
+                selected_machine,
+                ov_df,
+                ov_shift_label
+            )
     else:
-        filtered_df = df[df["Machine_ID"].str.strip() == selected_machine].copy()
-
-    TIME_COL = "Start_Time"
-    if TIME_COL in filtered_df.columns:
-        filtered_df[TIME_COL] = pd.to_datetime(filtered_df[TIME_COL], errors="coerce")
-        hour = filtered_df[TIME_COL].dt.hour
-        if st.session_state.selected_shift == "day":
-            filtered_df = filtered_df[(hour >= 7) & (hour < 19)]
-        elif st.session_state.selected_shift == "night":
-            filtered_df = filtered_df[(hour < 7) | (hour >= 19)]
-
-    shift_label = {
-        "total": "Total Shift (Day & Night)",
-        "day":   "Day Shift (07:00 – 19:00)",
-        "night": "Night Shift (19:00 – 07:00)",
-    }[st.session_state.selected_shift]
-
-    status_col = df["Status"].str.strip()
-    filtered_status = filtered_df["Status"].str.strip()
-
-    if selected_machine == "All":
-        total_machines = df["Machine_ID"].str.strip().nunique()
-        running_machines = filtered_df[filtered_status == "UP_PRODUCT"]["Machine_ID"].str.strip().nunique()
-        box1_title = "Machines Running"
-        box1_ratio = round((running_machines / total_machines) * 100) if total_machines > 0 else 0
-        box1_color = get_util_color(box1_ratio, st.session_state.util_threshold)
-        box1_desc = f"Currently producing · {shift_label}"
-        box1_value_html = f'<span style="color:{box1_color};">{running_machines}</span><span style="color:#ffffff;"> of {total_machines}</span>'
-    else:
-        is_running = (filtered_status == "UP_PRODUCT").any()
-        box1_title = "Machine Status"
-        box1_color = "#2ecc71" if is_running else "#e74c3c"
-        box1_desc = f"Based on UP_PRODUCT · {shift_label}"
-        box1_value_html = f'<span style="color:{box1_color};">{"Running" if is_running else "Not Running"}</span>'
-
-    total_duration = filtered_df["Duration_Min"].sum()
-    up_duration = filtered_df[filtered_status == "UP_PRODUCT"]["Duration_Min"].sum()
-    avg_util = round((up_duration / total_duration) * 100) if total_duration > 0 else 0
-    box2_color = get_util_color(avg_util, st.session_state.util_threshold)
-
-    # Box 3: Shift downtime = not UP_PRODUCT and not IDLE
-    shift_downtime = int(filtered_df[~filtered_status.isin(["UP_PRODUCT", "IDLE"])]["Duration_Min"].sum())
-
-    # Box 4: Fault repair time = WAIT_REPAIR + IN_REPAIR
-    total_repair = int(filtered_df[filtered_status.isin(["WAIT_REPAIR", "IN_REPAIR"])]["Duration_Min"].sum())
-
-    st.title(f"📊 {st.session_state.filename} - {shift_label}")
-
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        html_metric(box1_title, box1_value_html, box1_desc)
-    with col2:
-        colored_metric("Average Utilization", f"{avg_util}%", "Based on UP_PRODUCT status", box2_color)
-    with col3:
-        colored_metric("Total Shift Downtime", f"{shift_downtime} min", "WAIT_REPAIR, IN_REPAIR, WAIT_PM, IN_PM", "#ffffff")
-    with col4:
-        colored_metric("Total (Fault) Repair Time", f"{total_repair} min", "When status is WAIT_REPAIR or IN_REPAIR", "#ffffff")
-
-    st.divider()
-    # Optional: only show raw data when explicitly requested
-    show_raw = st.sidebar.checkbox("Show raw data (dashboard)", value=False, help="Enable to view the filtered rows/columns on the dashboard")
-    if show_raw:
-        st.markdown(f"**Rows:** {filtered_df.shape[0]} | **Columns:** {filtered_df.shape[1]}")
-        display_df = filtered_df.reset_index(drop=True)
-        display_df.index += 1
-        st.dataframe(display_df, use_container_width=True)
-
-    # ── AI SUMMARY ────────────────────────────────────────────────────────────
-    summary_key = f"{selected_machine}__{st.session_state.selected_shift}"
-    if selected_machine == "All":
-        render_ai_summary_section(summary_key, build_prompt_all, filtered_df, shift_label)
-    else:
-        render_ai_summary_section(summary_key, build_prompt_machine, selected_machine, filtered_df, shift_label)
+        st.warning("No data available for AI summary.")
 
 # ── PAGE: UPLOADER ────────────────────────────────────────────────────────────
 elif st.session_state.page == "upload":
