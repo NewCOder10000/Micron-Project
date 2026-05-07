@@ -282,8 +282,7 @@ if st.session_state.page == "overview":
     st.title("FabSight - Shift Performance Dashboard")
     st.write("By Uptime Guardians")
     st.markdown(now)
-    st.title(f"📋 Overview - {st.session_state.filename}")
-
+    
     # ── SHIFT + MACHINE SELECTORS ────────────────────────────────────────────
     shift_options = {
         "All": "total",
