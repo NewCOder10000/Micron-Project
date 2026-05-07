@@ -212,20 +212,51 @@ def render_ai_summary_section(summary_key, prompt_fn, *prompt_args):
             st.session_state.ai_summary_key = summary_key
 
     if st.session_state.ai_summary and st.session_state.ai_summary_key == summary_key:
-        lines = [l.strip() for l in st.session_state.ai_summary.split("\n") if l.strip().startswith("•")]
+        lines = [
+            l.strip()
+            for l in st.session_state.ai_summary.split("\n")
+            if l.strip().startswith("•")
+        ]
+
         if not lines:
-            lines = ["• " + l.strip() for l in st.session_state.ai_summary.split("•") if l.strip()]
+            lines = [
+                "• " + l.strip()
+                for l in st.session_state.ai_summary.split("•")
+                if l.strip()
+            ]
+
         if lines:
-            for line in lines[:3]:
-                st.markdown(f"""
-                    <div style="background:#1e2130; border-radius:8px; padding:12px 16px; margin-bottom:8px; border-left:4px solid #4a9eff;">
-                        <span style="color:#e0e0e0; font-size:14px;">{line}</span>
-                    </div>
-                """, unsafe_allow_html=True)
+            bullet_html = "<br>".join([
+                f'<div style="margin-bottom:8px;">{line}</div>'
+                for line in lines[:3]
+            ])
+
+            st.markdown(f"""
+                <div style="
+                    background:#1e2130;
+                    border-radius:10px;
+                    padding:16px 20px;
+                    margin-top:8px;
+                    border-left:5px solid #4a9eff;
+                ">
+                    <span style="color:#e0e0e0; font-size:14px; line-height:1.6;">
+                        {bullet_html}
+                    </span>
+                </div>
+            """, unsafe_allow_html=True)
+
         else:
             st.markdown(f"""
-                <div style="background:#1e2130; border-radius:8px; padding:12px 16px; border-left:4px solid #4a9eff;">
-                    <span style="color:#e0e0e0; font-size:14px;">{st.session_state.ai_summary}</span>
+                <div style="
+                    background:#1e2130;
+                    border-radius:10px;
+                    padding:16px 20px;
+                    margin-top:8px;
+                    border-left:5px solid #4a9eff;
+                ">
+                    <span style="color:#e0e0e0; font-size:14px; line-height:1.6;">
+                        {st.session_state.ai_summary}
+                    </span>
                 </div>
             """, unsafe_allow_html=True)
 
