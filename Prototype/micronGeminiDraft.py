@@ -573,9 +573,7 @@ if st.session_state.page == "overview":
             tl_legend_html += '</div>'
             st.markdown(tl_legend_html, unsafe_allow_html=True)
 
-    ### Stupid bar graph
-    st.markdown("#### Machine Performance")
-    st.write("PLEASE SHUT UP I GO DIE!")
+        st.divider()
 
 # ── UTILIZATION CALC ─────────────────────────────────────────
     ov_df["Machine_ID"] = ov_df["Machine_ID"].astype(str).str.strip()
@@ -623,8 +621,9 @@ if st.session_state.page == "overview":
         textposition="outside"
     ))
 
+    st.markdown("####  Machine Utilization vs Target")
+
     fig.update_layout(
-        title="Machine Utilization vs Target",
         paper_bgcolor="#0e1117",
         plot_bgcolor="#0e1117",
         font=dict(color="white"),
