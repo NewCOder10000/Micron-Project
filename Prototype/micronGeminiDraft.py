@@ -536,6 +536,7 @@ if st.session_state.page == "overview":
         text=[f"{u}%" for u in chart_df["Utilization"]],
         textposition="outside"
     ))
+
     fig.update_layout(
         title="Machine Utilization vs Target",
         paper_bgcolor="#0e1117",
