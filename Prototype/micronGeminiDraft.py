@@ -707,3 +707,5 @@ elif st.session_state.page == "upload":
             st.error(f"Error reading file: {e}")
     else:
         st.info("👆 Please upload an Excel file to continue.")
+
+#lol
