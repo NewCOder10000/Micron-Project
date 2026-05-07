@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import os
 import google.genai as genai
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 
 st.set_page_config(page_title="Micron Streamlit Dummy", layout="wide")
 
@@ -481,6 +483,77 @@ if st.session_state.page == "overview":
                 tl_legend_html += f'<span style="font-size:12px; color:#aaaaaa;"><span style="display:inline-block; width:12px; height:12px; background:{color}; border-radius:2px; margin-right:4px;"></span>{status}</span>'
             tl_legend_html += '</div>'
             st.markdown(tl_legend_html, unsafe_allow_html=True)
+
+    st.markdown("""
+    <div style="
+        margin: 22px 0 12px 0;
+        border-top: 2px solid rgba(255, 255, 255, 0.15);
+    "></div>
+    """, unsafe_allow_html=True)
+
+# ── UTILIZATION CALC ─────────────────────────────────────────
+    ov_df["Machine_ID"] = ov_df["Machine_ID"].astype(str).str.strip()
+    machines = sorted(ov_df["Machine_ID"].dropna().unique().tolist())
+
+    target_df = pd.DataFrame({
+        "Machine_ID": ["CMP-01", "CVD-01", "DIFF-01", "ETCH-01", "IMP-01", "LITHO-01"],
+        "Target": [95, 86, 85, 96, 89, 88]
+    })
+
+
+    util_list = []
+
+    for machine in machines:
+        mdf = ov_df[ov_df["Machine_ID"] == machine]
+
+        total = mdf["Duration_Min"].sum()
+        up = mdf[mdf["Status"] == "UP_PRODUCT"]["Duration_Min"].sum()
+
+        util = round((up / total) * 100) if total > 0 else 0
+
+        util_list.append({
+            "Machine_ID": machine,
+            "Utilization": util
+        })
+
+    util_df = pd.DataFrame(util_list)
+    chart_df = target_df.merge(util_df, on="Machine_ID", how="left")
+    chart_df["Utilization"] = chart_df["Utilization"].fillna(0)
+
+    # ── COLORS ────────────────────────────────────────────────────
+    colors = [
+        "#2ecc71" if u >= t else "#e74c3c"
+        for u, t in zip(chart_df["Utilization"], chart_df["Target"])
+    ]
+
+# ── PLOT ──────────────────────────────────────────────────────
+    fig = go.Figure()
+
+    fig.add_trace(go.Bar(
+        x=chart_df["Machine_ID"],
+        y=chart_df["Utilization"],
+        marker_color=colors,
+        text=[f"{u}%" for u in chart_df["Utilization"]],
+        textposition="outside"
+    ))
+
+    fig.update_layout(
+        title="Machine Utilization vs Target",
+        paper_bgcolor="#0e1117",
+        plot_bgcolor="#0e1117",
+        font=dict(color="white"),
+        yaxis=dict(range=[0, 110]),
+        showlegend=False
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown(
+        "<div style='color:#aaa; font-size:12px; text-align:center; margin-top:10px;'>"
+        "Targets: CMP-01 95% | CVD-01 86% | DIFF-01 85% | ETCH-01 96% | IMP-01 89% | LITHO-01 88%"
+        "</div>",
+        unsafe_allow_html=True
+    )
 
 # ── PAGE: DATA VIEWER ──────────────────────────────────────────────────────────
 elif st.session_state.page == "viewer":
