@@ -520,7 +520,7 @@ if st.session_state.page == "overview":
     chart_df = target_df.merge(util_df, on="Machine_ID", how="left")
     chart_df["Utilization"] = chart_df["Utilization"].fillna(0)
 
-    # ── COLORS ────────────────────────────────────────────────────
+# ── COLORS ────────────────────────────────────────────────────
     colors = [
         "#2ecc71" if u >= t else "#e74c3c"
         for u, t in zip(chart_df["Utilization"], chart_df["Target"])
@@ -529,12 +529,26 @@ if st.session_state.page == "overview":
 # ── PLOT ──────────────────────────────────────────────────────
     fig = go.Figure()
 
+    # Utilization bars
     fig.add_trace(go.Bar(
         x=chart_df["Machine_ID"],
         y=chart_df["Utilization"],
         marker_color=colors,
         text=[f"{u}%" for u in chart_df["Utilization"]],
-        textposition="outside"
+        textposition="outside",
+        name="Utilization"
+    ))
+
+    # Target line
+    fig.add_trace(go.Scatter(
+        x=chart_df["Machine_ID"],
+        y=chart_df["Target"],
+        mode="lines+markers",
+        name="Target",
+        line=dict(color="cyan", width=3, dash="dash"),
+        marker=dict(size=8),
+        text=[f"{t}%" for t in chart_df["Target"]],
+        textposition="top center"
     ))
 
     fig.update_layout(
@@ -542,8 +556,15 @@ if st.session_state.page == "overview":
         paper_bgcolor="#0e1117",
         plot_bgcolor="#0e1117",
         font=dict(color="white"),
-        yaxis=dict(range=[0, 110]),
-        showlegend=False
+        yaxis=dict(range=[0, 110], title="Utilization %"),
+        xaxis=dict(title="Machine"),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
     )
 
     st.plotly_chart(fig, use_container_width=True)
@@ -709,3 +730,4 @@ elif st.session_state.page == "upload":
         st.info("👆 Please upload an Excel file to continue.")
 
 #lol
+#test
