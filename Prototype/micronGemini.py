@@ -1,15 +1,14 @@
 import streamlit as st
 import pandas as pd
 import os
-from google import genai
+import google.genai as genai
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 from datetime import datetime
 
-st.set_page_config(page_title="Micron Fabsight", layout="wide")
+st.set_page_config(page_title="Micron Streamlit Dummy", layout="wide")
 
 DATASET_FOLDER = os.path.join(os.path.dirname(__file__), '..', 'Datasets')
-
-GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-GEMINI_MODEL = st.secrets["GEMINI_MODEL"]
 
 now = datetime.now().strftime("%d-%m-%Y")
 
@@ -35,6 +34,11 @@ if "_thresh_input" not in st.session_state:
     st.session_state._thresh_input = 95
 if "overview_machine" not in st.session_state:
     st.session_state.overview_machine = "All"
+if "show_dataset" not in st.session_state:
+    st.session_state.show_dataset = False
+
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+GEMINI_MODEL = st.secrets["GEMINI_MODEL"]
 
 @st.cache_resource
 def get_gemini_client():
@@ -208,20 +212,51 @@ def render_ai_summary_section(summary_key, prompt_fn, *prompt_args):
             st.session_state.ai_summary_key = summary_key
 
     if st.session_state.ai_summary and st.session_state.ai_summary_key == summary_key:
-        lines = [l.strip() for l in st.session_state.ai_summary.split("\n") if l.strip().startswith("•")]
+        lines = [
+            l.strip()
+            for l in st.session_state.ai_summary.split("\n")
+            if l.strip().startswith("•")
+        ]
+
         if not lines:
-            lines = ["• " + l.strip() for l in st.session_state.ai_summary.split("•") if l.strip()]
+            lines = [
+                "• " + l.strip()
+                for l in st.session_state.ai_summary.split("•")
+                if l.strip()
+            ]
+
         if lines:
-            for line in lines[:3]:
-                st.markdown(f"""
-                    <div style="background:#1e2130; border-radius:8px; padding:12px 16px; margin-bottom:8px; border-left:4px solid #4a9eff;">
-                        <span style="color:#e0e0e0; font-size:14px;">{line}</span>
-                    </div>
-                """, unsafe_allow_html=True)
+            bullet_html = "<br>".join([
+                f'<div style="margin-bottom:8px;">{line}</div>'
+                for line in lines[:3]
+            ])
+
+            st.markdown(f"""
+                <div style="
+                    background:#1e2130;
+                    border-radius:10px;
+                    padding:16px 20px;
+                    margin-top:8px;
+                    border-left:5px solid #4a9eff;
+                ">
+                    <span style="color:#e0e0e0; font-size:14px; line-height:1.6;">
+                        {bullet_html}
+                    </span>
+                </div>
+            """, unsafe_allow_html=True)
+
         else:
             st.markdown(f"""
-                <div style="background:#1e2130; border-radius:8px; padding:12px 16px; border-left:4px solid #4a9eff;">
-                    <span style="color:#e0e0e0; font-size:14px;">{st.session_state.ai_summary}</span>
+                <div style="
+                    background:#1e2130;
+                    border-radius:10px;
+                    padding:16px 20px;
+                    margin-top:8px;
+                    border-left:5px solid #4a9eff;
+                ">
+                    <span style="color:#e0e0e0; font-size:14px; line-height:1.6;">
+                        {st.session_state.ai_summary}
+                    </span>
                 </div>
             """, unsafe_allow_html=True)
 
@@ -235,34 +270,6 @@ if st.session_state.df is not None and st.session_state.page != "upload":
             st.rerun()
         st.divider()
 
-
-# ── PAGE: UPLOADER ────────────────────────────────────────────────────────────
-elif st.session_state.page == "upload":
-    st.title("Upload Excel File")
-    st.markdown("Upload your Excel file below to get started.")
-
-    uploaded_file = st.file_uploader("Choose an Excel file", type=["xlsx", "xls"])
-
-    if uploaded_file is not None:
-        st.success(f"✅ File uploaded: **{uploaded_file.name}**")
-
-        os.makedirs(DATASET_FOLDER, exist_ok=True)
-        save_path = os.path.join(DATASET_FOLDER, uploaded_file.name)
-        with open(save_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
-        st.success(f"💾 Saved to: `{save_path}`")
-
-        try:
-            df = pd.read_excel(uploaded_file)
-            st.session_state.df = df
-            st.session_state.filename = uploaded_file.name
-            st.session_state.page = "overview"
-            st.rerun()
-        except Exception as e:
-            st.error(f"Error reading file: {e}")
-    else:
-        st.info("👆 Please upload an Excel file to continue.")
-
 # ── PAGE: OVERVIEW ─────────────────────────────────────────────────────────────
 if st.session_state.page == "overview":
     df = st.session_state.df
@@ -272,11 +279,10 @@ if st.session_state.page == "overview":
     df["Start_Time"] = pd.to_datetime(df["Start_Time"], errors="coerce")
     df["End_Time"] = pd.to_datetime(df["End_Time"], errors="coerce")
 
-    st.title("FabSight - Shift Performance Overview")
+    st.title("FabSight - Shift Performance Dashboard")
     st.write("By Uptime Guardians")
     st.markdown(now)
-    st.title(f"📋 Overview - {st.session_state.filename}")
-
+    
     # ── SHIFT + MACHINE SELECTORS ────────────────────────────────────────────
     shift_options = {
         "All": "total",
@@ -426,23 +432,10 @@ if st.session_state.page == "overview":
             "WAIT_PM + IN_PM"
         )
 
-    with fc7:
-        metric_box(
-            "Placeholder",
-            "-",
-            "Reserved for future metric"
-        )
-
-    with fc8:
-        metric_box(
-            "Placeholder",
-            "-",
-            "Reserved for future metric"
-        )
-
     st.divider()
 
     # ── UTILISATION THRESHOLD ON OVERVIEW PAGE ───────────────────────────────
+    st.divider()
     st.markdown("#### 🎯 Utilisation Threshold")
 
     st.session_state.setdefault("util_threshold", 95)
@@ -460,7 +453,7 @@ if st.session_state.page == "overview":
         st.session_state["_thresh_slider"] = val
         st.session_state["util_threshold"] = val
 
-    th_col1, th_col2, th_col3 = st.columns([3, 1, 2])
+    th_col1, th_col2 = st.columns([2, 1])
 
     with th_col1:
         st.slider(
@@ -473,7 +466,6 @@ if st.session_state.page == "overview":
             on_change=_sync_from_slider,
         )
 
-    with th_col2:
         st.number_input(
             "Manual input",
             min_value=0,
@@ -484,19 +476,29 @@ if st.session_state.page == "overview":
             on_change=_sync_from_input,
         )
 
-    with th_col3:
+    with th_col2:
         st.markdown(
             f"""
             <div style="
                 background-color:#1e2130;
-                border-radius:10px;
-                padding:14px 18px;
-                margin-top:24px;
+                border-radius:12px;
+                padding:22px 24px;
+                margin-top:28px;
                 border-left:5px solid #4a9eff;
+                min-height:92px;
+                display:flex;
+                flex-direction:column;
+                justify-content:center;
+                gap:10px;
+                justify-content:center;
+                align-items:center;
             ">
-                <span style="color:#2ecc71; font-weight:bold;">🟢 ≥ {st.session_state['util_threshold']}%</span>
-                <br>
-                <span style="color:#e74c3c; font-weight:bold;">🔴 &lt; {st.session_state['util_threshold']}%</span>
+                <div style="color:#2ecc71; font-weight:bold; font-size:15px;">
+                    🟢 ≥ {st.session_state['util_threshold']}%
+                </div>
+                <div style="color:#e74c3c; font-weight:bold; font-size:15px;">
+                    🔴 &lt; {st.session_state['util_threshold']}%
+                </div>
             </div>
             """,
             unsafe_allow_html=True
@@ -599,6 +601,141 @@ if st.session_state.page == "overview":
             tl_legend_html += '</div>'
             st.markdown(tl_legend_html, unsafe_allow_html=True)
 
-    ### Stupid bar graph
-    st.markdown("#### Machine Performance")
-    st.write("PLEASE SHUT UP I GO DIE!")
+        st.divider()
+
+# ── UTILIZATION CALC ─────────────────────────────────────────
+    ov_df["Machine_ID"] = ov_df["Machine_ID"].astype(str).str.strip()
+    machines = sorted(ov_df["Machine_ID"].dropna().unique().tolist())
+
+    target_df = pd.DataFrame({
+        "Machine_ID": ["CMP-01", "CVD-01", "DIFF-01", "ETCH-01", "IMP-01", "LITHO-01"],
+        "Target": [95, 86, 85, 96, 89, 88]
+    })
+
+
+    util_list = []
+
+    for machine in machines:
+        mdf = ov_df[ov_df["Machine_ID"] == machine]
+
+        total = mdf["Duration_Min"].sum()
+        up = mdf[mdf["Status"] == "UP_PRODUCT"]["Duration_Min"].sum()
+
+        util = round((up / total) * 100) if total > 0 else 0
+
+        util_list.append({
+            "Machine_ID": machine,
+            "Utilization": util
+        })
+
+    util_df = pd.DataFrame(util_list)
+    chart_df = target_df.merge(util_df, on="Machine_ID", how="left")
+    chart_df["Utilization"] = chart_df["Utilization"].fillna(0)
+
+    # ── COLORS ────────────────────────────────────────────────────
+    colors = [
+        "#2ecc71" if u >= t else "#e74c3c"
+        for u, t in zip(chart_df["Utilization"], chart_df["Target"])
+    ]
+
+# ── PLOT ──────────────────────────────────────────────────────
+    fig = go.Figure()
+
+    fig.add_trace(go.Bar(
+        x=chart_df["Machine_ID"],
+        y=chart_df["Utilization"],
+        marker_color=colors,
+        text=[f"{u}%" for u in chart_df["Utilization"]],
+        textposition="outside"
+    ))
+
+    st.markdown("####  Machine Utilization vs Target")
+
+    fig.update_layout(
+        paper_bgcolor="#0e1117",
+        plot_bgcolor="#0e1117",
+        font=dict(color="white"),
+        yaxis=dict(range=[0, 110]),
+        showlegend=False
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown(
+        "<div style='color:#aaa; font-size:12px; text-align:center; margin-top:10px;'>"
+        "Targets: CMP-01 95% | CVD-01 86% | DIFF-01 85% | ETCH-01 96% | IMP-01 89% | LITHO-01 88%"
+        "</div>",
+        unsafe_allow_html=True
+    )
+
+    # ── DATASET PREVIEW SECTION ──────────────────────────────────────────────
+    st.divider()
+    st.markdown("#### 📊 Dataset Preview")
+
+    if st.button(
+        "Show Dataset" if not st.session_state.show_dataset else "Hide Dataset",
+        key="toggle_dataset_btn"
+    ):
+        st.session_state.show_dataset = not st.session_state.show_dataset
+        st.rerun()
+
+    if st.session_state.show_dataset:
+        st.caption("Showing dataset based on current Shift and Machine filters.")
+        st.dataframe(
+            ov_df,
+            use_container_width=True,
+            hide_index=True
+    )
+    else:
+        st.info("Dataset preview is hidden. Click **Show Dataset** to view it.")
+
+    # ── AI SUMMARY SECTION ───────────────────────────────────────────────────
+    if not ov_df.empty:
+        if selected_machine == "All":
+            summary_key = f"overview_{ov_active}_all"
+            render_ai_summary_section(
+                summary_key,
+                build_prompt_all,
+                ov_df,
+                ov_shift_label
+            )
+        else:
+            summary_key = f"overview_{ov_active}_{selected_machine}"
+            render_ai_summary_section(
+                summary_key,
+                build_prompt_machine,
+                selected_machine,
+                ov_df,
+                ov_shift_label
+            )
+    else:
+        st.warning("No data available for AI summary.")
+
+# ── PAGE: UPLOADER ────────────────────────────────────────────────────────────
+elif st.session_state.page == "upload":
+    st.title("Upload Excel File")
+    st.markdown("Upload your Excel file below to get started.")
+
+    uploaded_file = st.file_uploader("Choose an Excel file", type=["xlsx", "xls"])
+
+    if uploaded_file is not None:
+        st.success(f"✅ File uploaded: **{uploaded_file.name}**")
+
+        os.makedirs(DATASET_FOLDER, exist_ok=True)
+        save_path = os.path.join(DATASET_FOLDER, uploaded_file.name)
+        with open(save_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        st.success(f"💾 Saved to: `{save_path}`")
+
+        try:
+            df = pd.read_excel(uploaded_file)
+            st.session_state.df = df
+            st.session_state.filename = uploaded_file.name
+            st.session_state.page = "overview"
+            st.rerun()
+        except Exception as e:
+            st.error(f"Error reading file: {e}")
+    else:
+        st.info("👆 Please upload an Excel file to continue.")
+
+#lol
