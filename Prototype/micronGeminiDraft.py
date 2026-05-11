@@ -532,7 +532,7 @@ def render_ai_summary_section(summary_key, prompt_fn, *prompt_args):
 
 def render_actions_next_shift_section(summary_key, prompt_fn, *prompt_args):
     st.divider()
-    st.title("Actions for Next Shift")
+    st.markdown("Actions for Next Shift")
 
     if st.button("✅ Generate Actions for Next Shift", key=f"actions_btn_{summary_key}"):
         with st.spinner("Generating actions with Gemini..."):
