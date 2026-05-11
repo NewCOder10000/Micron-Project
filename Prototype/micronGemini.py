@@ -214,7 +214,7 @@ def build_prompt_all(filtered_df, shift_label):
     ) if not spare_flags.empty else "No spare parts shortage signals found"
 
     prompt = f"""
-Generate structured shift-summary bullet points covering 7 insight areas:
+Generate structured shift-summary bullet points covering exactly 8 insight areas:
 1. Alarm frequency, focusing on the highest-occurrence IN_REPAIR fault types.
 2. IN_REPAIR vs WAIT_REPAIR duration analysis.
 3. Percentage of time in WAIT_PM and WAIT_REPAIR per shift.
@@ -222,6 +222,7 @@ Generate structured shift-summary bullet points covering 7 insight areas:
 5. Non-machine failures, including people and parts delays.
 6. Top 20% downtime contributors.
 7. Spare parts shortage flags per machine.
+8. Three actionable actions to improve overall shift performance and utilization.
 
 Shift: {shift_label}
 
@@ -236,8 +237,9 @@ Available data:
 - Top 20% downtime contributors: {top_20_str}
 - Spare parts shortage flags: {spare_flags_str}
 
-Write exactly 7 bullet points using • as the bullet symbol.
+Write exactly 8 bullet points using • as the bullet symbol.
 Each bullet point should correspond to one insight area.
+The 8th bullet point must contain exactly 3 actionable actions, separated by semicolons.
 Be factual, direct, and operational.
 Do not add headers.
 Do not add closing remarks.
@@ -298,7 +300,7 @@ def build_prompt_machine(machine_id, filtered_df, shift_label):
         if not spare_reasons.empty else "No spare parts shortage signals found"
 
     prompt = f"""
-Generate structured machine shift-summary bullet points covering 7 insight areas:
+Generate structured machine shift-summary bullet points covering exactly 8 insight areas:
 1. Alarm frequency, focusing on the highest-occurrence IN_REPAIR fault types.
 2. IN_REPAIR vs WAIT_REPAIR duration analysis.
 3. Percentage of time in WAIT_PM and WAIT_REPAIR for this shift.
@@ -306,6 +308,7 @@ Generate structured machine shift-summary bullet points covering 7 insight areas
 5. Non-machine failures, including people and parts delays.
 6. Downtime contribution of this machine.
 7. Spare parts shortage flags for this machine.
+8. Three actionable actions to improve this machine's utilization.
 
 Machine: {machine_id}
 Shift: {shift_label}
@@ -322,8 +325,9 @@ Available data:
 - Spare parts shortage duration: {spare_min} minutes
 - Spare parts shortage reasons: {spare_reasons_str}
 
-Write exactly 7 bullet points using • as the bullet symbol.
+Write exactly 8 bullet points using • as the bullet symbol.
 Each bullet point should correspond to one insight area.
+The 8th bullet point must contain exactly 3 actionable actions, separated by semicolons.
 Be factual, direct, and operational.
 Do not add headers.
 Do not add closing remarks.
@@ -359,7 +363,7 @@ def render_ai_summary_section(summary_key, prompt_fn, *prompt_args):
         if lines:
             bullet_html = "<br>".join([
                 f'<div style="margin-bottom:8px;">{line}</div>'
-                for line in lines[:7]
+                for line in lines[:8]
             ])
 
             st.markdown(f"""
@@ -566,8 +570,7 @@ if st.session_state.page == "overview":
     st.divider()
 
     # ── UTILISATION THRESHOLD ON OVERVIEW PAGE ───────────────────────────────
-    st.divider()
-    st.markdown("#### 🎯 Utilisation Threshold")
+    st.markdown("#### 🎯 Downtime Threshold")
 
     st.session_state.setdefault("util_threshold", 95)
     st.session_state.setdefault("_thresh_slider", int(st.session_state["util_threshold"]))
@@ -781,17 +784,25 @@ if st.session_state.page == "overview":
         textposition="outside",
         name="Utilization"
     ))
+    
+    x_vals = []
+    y_vals = []
 
-    # Target line
+    for m, t in zip(chart_df["Machine_ID"], chart_df["Target"]):
+        x_vals += [m, m, None]
+        y_vals += [t, t, None]
+
     fig.add_trace(go.Scatter(
         x=chart_df["Machine_ID"],
         y=chart_df["Target"],
-        mode="lines+markers",
-        name="Target",
-        line=dict(color="cyan", width=3, dash="dash"),
-        marker=dict(size=8),
-        text=[f"{t}%" for t in chart_df["Target"]],
-        textposition="top center"
+        mode="markers",
+        marker=dict(
+            color="#f1c40f",
+            size=90,
+            symbol="line-ew",
+            line=dict(width=2, color="#f1c40f")
+        ),
+        name="Target"
     ))
 
     fig.update_layout(
@@ -800,7 +811,9 @@ if st.session_state.page == "overview":
         plot_bgcolor="#0e1117",
         font=dict(color="white"),
         yaxis=dict(range=[0, 110], title="Utilization %"),
-        xaxis=dict(title="Machine"),
+        xaxis=dict(
+            title="Machine"
+        ),
         legend=dict(
             orientation="h",
             yanchor="bottom",
