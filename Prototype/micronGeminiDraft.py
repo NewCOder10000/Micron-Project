@@ -306,6 +306,7 @@ Generate structured machine shift-summary bullet points covering 7 insight areas
 5. Non-machine failures, including people and parts delays.
 6. Downtime contribution of this machine.
 7. Spare parts shortage flags for this machine.
+8. Give 3 actionable advice for next steps to improve the utilisation.
 
 Machine: {machine_id}
 Shift: {shift_label}
@@ -322,7 +323,7 @@ Available data:
 - Spare parts shortage duration: {spare_min} minutes
 - Spare parts shortage reasons: {spare_reasons_str}
 
-Write exactly 7 bullet points using • as the bullet symbol.
+Write exactly 8 bullet points using • as the bullet symbol.
 Each bullet point should correspond to one insight area.
 Be factual, direct, and operational.
 Do not add headers.
@@ -359,7 +360,7 @@ def render_ai_summary_section(summary_key, prompt_fn, *prompt_args):
         if lines:
             bullet_html = "<br>".join([
                 f'<div style="margin-bottom:8px;">{line}</div>'
-                for line in lines[:7]
+                for line in lines[:8]
             ])
 
             st.markdown(f"""
@@ -566,7 +567,6 @@ if st.session_state.page == "overview":
     st.divider()
 
     # ── UTILISATION THRESHOLD ON OVERVIEW PAGE ───────────────────────────────
-    st.divider()
     st.markdown("#### 🎯 Downtime Threshold")
 
     st.session_state.setdefault("util_threshold", 95)
