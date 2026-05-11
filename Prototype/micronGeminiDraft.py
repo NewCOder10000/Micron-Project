@@ -214,7 +214,7 @@ def build_prompt_all(filtered_df, shift_label):
     ) if not spare_flags.empty else "No spare parts shortage signals found"
 
     prompt = f"""
-Generate structured shift-summary bullet points covering exactly 8 insight areas:
+Generate structured shift-summary bullet points covering 7 insight areas:
 1. Alarm frequency, focusing on the highest-occurrence IN_REPAIR fault types.
 2. IN_REPAIR vs WAIT_REPAIR duration analysis.
 3. Percentage of time in WAIT_PM and WAIT_REPAIR per shift.
@@ -222,7 +222,6 @@ Generate structured shift-summary bullet points covering exactly 8 insight areas
 5. Non-machine failures, including people and parts delays.
 6. Top 20% downtime contributors.
 7. Spare parts shortage flags per machine.
-8. Three actionable actions to improve overall shift performance and utilization.
 
 Shift: {shift_label}
 
@@ -237,9 +236,8 @@ Available data:
 - Top 20% downtime contributors: {top_20_str}
 - Spare parts shortage flags: {spare_flags_str}
 
-Write exactly 8 bullet points using • as the bullet symbol.
+Write exactly 7 bullet points using • as the bullet symbol.
 Each bullet point should correspond to one insight area.
-The 8th bullet point must contain exactly 3 actionable actions, separated by semicolons.
 Be factual, direct, and operational.
 Do not add headers.
 Do not add closing remarks.
@@ -308,7 +306,6 @@ Generate structured machine shift-summary bullet points covering exactly 8 insig
 5. Non-machine failures, including people and parts delays.
 6. Downtime contribution of this machine.
 7. Spare parts shortage flags for this machine.
-8. Three actionable actions to improve this machine's utilization.
 
 Machine: {machine_id}
 Shift: {shift_label}
@@ -325,9 +322,8 @@ Available data:
 - Spare parts shortage duration: {spare_min} minutes
 - Spare parts shortage reasons: {spare_reasons_str}
 
-Write exactly 8 bullet points using • as the bullet symbol.
+Write exactly 7 bullet points using • as the bullet symbol.
 Each bullet point should correspond to one insight area.
-The 8th bullet point must contain exactly 3 actionable actions, separated by semicolons.
 Be factual, direct, and operational.
 Do not add headers.
 Do not add closing remarks.
@@ -363,7 +359,7 @@ def render_ai_summary_section(summary_key, prompt_fn, *prompt_args):
         if lines:
             bullet_html = "<br>".join([
                 f'<div style="margin-bottom:8px;">{line}</div>'
-                for line in lines[:8]
+                for line in lines[:7]
             ])
 
             st.markdown(f"""
