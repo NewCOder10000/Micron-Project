@@ -214,7 +214,7 @@ def build_prompt_all(filtered_df, shift_label):
     ) if not spare_flags.empty else "No spare parts shortage signals found"
 
     prompt = f"""
-Generate structured shift-summary bullet points covering 7 insight areas:
+Generate structured shift-summary bullet points covering exactly 8 insight areas:
 1. Alarm frequency, focusing on the highest-occurrence IN_REPAIR fault types.
 2. IN_REPAIR vs WAIT_REPAIR duration analysis.
 3. Percentage of time in WAIT_PM and WAIT_REPAIR per shift.
@@ -222,6 +222,7 @@ Generate structured shift-summary bullet points covering 7 insight areas:
 5. Non-machine failures, including people and parts delays.
 6. Top 20% downtime contributors.
 7. Spare parts shortage flags per machine.
+8. Three actionable actions to improve overall shift performance and utilization.
 
 Shift: {shift_label}
 
@@ -236,8 +237,9 @@ Available data:
 - Top 20% downtime contributors: {top_20_str}
 - Spare parts shortage flags: {spare_flags_str}
 
-Write exactly 7 bullet points using • as the bullet symbol.
+Write exactly 8 bullet points using • as the bullet symbol.
 Each bullet point should correspond to one insight area.
+The 8th bullet point must contain exactly 3 actionable actions, separated by semicolons.
 Be factual, direct, and operational.
 Do not add headers.
 Do not add closing remarks.
@@ -298,7 +300,7 @@ def build_prompt_machine(machine_id, filtered_df, shift_label):
         if not spare_reasons.empty else "No spare parts shortage signals found"
 
     prompt = f"""
-Generate structured machine shift-summary bullet points covering 7 insight areas:
+Generate structured machine shift-summary bullet points covering exactly 8 insight areas:
 1. Alarm frequency, focusing on the highest-occurrence IN_REPAIR fault types.
 2. IN_REPAIR vs WAIT_REPAIR duration analysis.
 3. Percentage of time in WAIT_PM and WAIT_REPAIR for this shift.
@@ -306,7 +308,7 @@ Generate structured machine shift-summary bullet points covering 7 insight areas
 5. Non-machine failures, including people and parts delays.
 6. Downtime contribution of this machine.
 7. Spare parts shortage flags for this machine.
-8. Give 3 actionable advice for next steps to improve the utilisation.
+8. Three actionable actions to improve this machine's utilization.
 
 Machine: {machine_id}
 Shift: {shift_label}
@@ -325,6 +327,7 @@ Available data:
 
 Write exactly 8 bullet points using • as the bullet symbol.
 Each bullet point should correspond to one insight area.
+The 8th bullet point must contain exactly 3 actionable actions, separated by semicolons.
 Be factual, direct, and operational.
 Do not add headers.
 Do not add closing remarks.
