@@ -781,26 +781,38 @@ if st.session_state.page == "overview":
         textposition="outside",
         name="Utilization"
     ))
+    
+    shapes = []
 
-    # Target line
-    fig.add_trace(go.Scatter(
-        x=chart_df["Machine_ID"],
-        y=chart_df["Target"],
-        mode="lines+markers",
-        name="Target",
-        line=dict(color="cyan", width=3, dash="dash"),
-        marker=dict(size=8),
-        text=[f"{t}%" for t in chart_df["Target"]],
-        textposition="top center"
-    ))
+    for i, row in chart_df.iterrows():
+        shapes.append(dict(
+            type="line",
+            xref="x",
+            yref="y",
+            x0=row["Machine_ID"],
+            x1=row["Machine_ID"],
+            y0=row["Target"],
+            y1=row["Target"],
+            line=dict(
+                color="#f1c40f",  # yellow
+                width=3,
+                dash="dash"
+            )
+        ))
 
     fig.update_layout(
+        shapes=shapes,
         title="Machine Utilization vs Target",
         paper_bgcolor="#0e1117",
         plot_bgcolor="#0e1117",
         font=dict(color="white"),
         yaxis=dict(range=[0, 110], title="Utilization %"),
-        xaxis=dict(title="Machine"),
+        xaxis=dict(
+            title="Machine",
+            type="category",
+            categoryorder="array",
+            categoryarray=chart_df["Machine_ID"].tolist()
+        ),
         legend=dict(
             orientation="h",
             yanchor="bottom",
