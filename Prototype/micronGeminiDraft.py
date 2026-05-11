@@ -567,7 +567,7 @@ if st.session_state.page == "overview":
 
     # ── UTILISATION THRESHOLD ON OVERVIEW PAGE ───────────────────────────────
     st.divider()
-    st.markdown("#### 🎯 Utilisation Threshold")
+    st.markdown("#### 🎯 Downtime Threshold")
 
     st.session_state.setdefault("util_threshold", 95)
     st.session_state.setdefault("_thresh_slider", int(st.session_state["util_threshold"]))
