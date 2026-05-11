@@ -781,17 +781,25 @@ if st.session_state.page == "overview":
         textposition="outside",
         name="Utilization"
     ))
+    
+    x_vals = []
+    y_vals = []
 
-    # Target line
+    for m, t in zip(chart_df["Machine_ID"], chart_df["Target"]):
+        x_vals += [m, m, None]
+        y_vals += [t, t, None]
+
     fig.add_trace(go.Scatter(
         x=chart_df["Machine_ID"],
         y=chart_df["Target"],
-        mode="lines+markers",
-        name="Target",
-        line=dict(color="cyan", width=3, dash="dash"),
-        marker=dict(size=8),
-        text=[f"{t}%" for t in chart_df["Target"]],
-        textposition="top center"
+        mode="markers",
+        marker=dict(
+            color="#f1c40f",
+            size=90,
+            symbol="line-ew",
+            line=dict(width=2, color="#f1c40f")
+        ),
+        name="Target"
     ))
 
     fig.update_layout(
@@ -800,7 +808,9 @@ if st.session_state.page == "overview":
         plot_bgcolor="#0e1117",
         font=dict(color="white"),
         yaxis=dict(range=[0, 110], title="Utilization %"),
-        xaxis=dict(title="Machine"),
+        xaxis=dict(
+            title="Machine"
+        ),
         legend=dict(
             orientation="h",
             yanchor="bottom",
