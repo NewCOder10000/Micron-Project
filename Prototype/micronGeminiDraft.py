@@ -27,6 +27,10 @@ if "ai_summary" not in st.session_state:
     st.session_state.ai_summary = None
 if "ai_summary_key" not in st.session_state:
     st.session_state.ai_summary_key = None
+if "actions_summary" not in st.session_state:
+    st.session_state.actions_summary = None
+if "actions_summary_key" not in st.session_state:
+    st.session_state.actions_summary_key = None
 if "util_threshold" not in st.session_state:
     st.session_state.util_threshold = 95
 if "_thresh_slider" not in st.session_state:
@@ -298,7 +302,7 @@ def build_prompt_machine(machine_id, filtered_df, shift_label):
         if not spare_reasons.empty else "No spare parts shortage signals found"
 
     prompt = f"""
-Generate structured machine shift-summary bullet points covering exactly 8 insight areas:
+Generate structured machine shift-summary bullet points covering exactly 7 insight areas:
 1. Alarm frequency, focusing on the highest-occurrence IN_REPAIR fault types.
 2. IN_REPAIR vs WAIT_REPAIR duration analysis.
 3. Percentage of time in WAIT_PM and WAIT_REPAIR for this shift.
@@ -325,6 +329,141 @@ Available data:
 Write exactly 7 bullet points using • as the bullet symbol.
 Each bullet point should correspond to one insight area.
 Be factual, direct, and operational.
+Do not add headers.
+Do not add closing remarks.
+Do not use motivational language.
+"""
+    return prompt
+
+def build_actions_prompt_all(filtered_df, shift_label):
+    fdf = filtered_df.copy()
+    fdf["Status"] = fdf["Status"].str.strip()
+    fdf["Machine_ID"] = fdf["Machine_ID"].str.strip()
+
+    total_duration = fdf["Duration_Min"].sum()
+
+    wait_repair_min = int(fdf[fdf["Status"] == "WAIT_REPAIR"]["Duration_Min"].sum())
+    wait_pm_min = int(fdf[fdf["Status"] == "WAIT_PM"]["Duration_Min"].sum())
+
+    wait_repair_pct = round((wait_repair_min / total_duration) * 100, 1) if total_duration > 0 else 0
+    wait_pm_pct = round((wait_pm_min / total_duration) * 100, 1) if total_duration > 0 else 0
+
+    downtime_df = fdf[fdf["Status"] != "UP_PRODUCT"]
+    machine_downtime = downtime_df.groupby("Machine_ID")["Duration_Min"].sum().sort_values(ascending=False)
+
+    top_downtime_str = ", ".join(
+        [f"{machine} ({int(duration)} min)" for machine, duration in machine_downtime.head(3).items()]
+    ) if not machine_downtime.empty else "No downtime contributors recorded"
+
+    non_machine_df = fdf[fdf["Status"].isin(["WAIT_REPAIR", "WAIT_PM"])]
+    non_machine_reasons = non_machine_df["Downtime_Reason"].dropna().astype(str).str.strip()
+    non_machine_reasons = non_machine_reasons[non_machine_reasons != ""]
+    top_non_machine = non_machine_reasons.value_counts().head(5)
+
+    top_non_machine_str = ", ".join(
+        [f"{reason} ({count} occurrences)" for reason, count in top_non_machine.items()]
+    ) if not top_non_machine.empty else "No people or parts delay reasons recorded"
+
+    spare_keywords = ["part", "parts", "spare", "material", "component", "stock"]
+    spare_df = downtime_df[
+        downtime_df["Downtime_Reason"].fillna("").astype(str).str.lower().str.contains(
+            "|".join(spare_keywords)
+        )
+    ]
+
+    spare_flags = spare_df.groupby("Machine_ID")["Duration_Min"].sum().sort_values(ascending=False)
+
+    spare_flags_str = ", ".join(
+        [f"{machine} ({int(duration)} min)" for machine, duration in spare_flags.head(5).items()]
+    ) if not spare_flags.empty else "No spare parts shortage signals found"
+
+    prompt = f"""
+Generate actions for the next shift based on the shift performance data.
+
+Shift: {shift_label}
+
+Available data:
+- WAIT_REPAIR duration: {wait_repair_min} minutes
+- WAIT_PM duration: {wait_pm_min} minutes
+- WAIT_REPAIR percentage of shift: {wait_repair_pct}%
+- WAIT_PM percentage of shift: {wait_pm_pct}%
+- Top downtime contributors: {top_downtime_str}
+- Top non-machine delay reasons: {top_non_machine_str}
+- Spare parts shortage flags: {spare_flags_str}
+
+Write exactly 3 bullet points using • as the bullet symbol.
+Each bullet point must be an action for the next shift team.
+Focus on what to do, not just what happened.
+Be direct, practical, and operational.
+Do not add headers.
+Do not add closing remarks.
+Do not use motivational language.
+"""
+    return prompt
+
+def build_actions_prompt_machine(machine_id, filtered_df, shift_label):
+    fdf = filtered_df.copy()
+    fdf["Status"] = fdf["Status"].str.strip()
+    fdf["Machine_ID"] = fdf["Machine_ID"].str.strip()
+
+    mdf = fdf[fdf["Machine_ID"] == machine_id].copy()
+    total_duration = mdf["Duration_Min"].sum()
+
+    wait_repair_min = int(mdf[mdf["Status"] == "WAIT_REPAIR"]["Duration_Min"].sum())
+    wait_pm_min = int(mdf[mdf["Status"] == "WAIT_PM"]["Duration_Min"].sum())
+    in_repair_min = int(mdf[mdf["Status"] == "IN_REPAIR"]["Duration_Min"].sum())
+
+    wait_repair_pct = round((wait_repair_min / total_duration) * 100, 1) if total_duration > 0 else 0
+    wait_pm_pct = round((wait_pm_min / total_duration) * 100, 1) if total_duration > 0 else 0
+
+    downtime_min = int(mdf[mdf["Status"] != "UP_PRODUCT"]["Duration_Min"].sum())
+
+    non_machine_df = mdf[mdf["Status"].isin(["WAIT_REPAIR", "WAIT_PM"])]
+    non_machine_reasons = non_machine_df["Downtime_Reason"].dropna().astype(str).str.strip()
+    non_machine_reasons = non_machine_reasons[non_machine_reasons != ""]
+    top_non_machine = non_machine_reasons.value_counts().head(5)
+
+    top_non_machine_str = ", ".join(
+        [f"{reason} ({count} occurrences)" for reason, count in top_non_machine.items()]
+    ) if not top_non_machine.empty else "No people or parts delay reasons recorded"
+
+    spare_keywords = ["part", "parts", "spare", "material", "component", "stock"]
+    spare_df = mdf[
+        mdf["Downtime_Reason"].fillna("").astype(str).str.lower().str.contains(
+            "|".join(spare_keywords)
+        )
+    ]
+
+    spare_min = int(spare_df["Duration_Min"].sum())
+
+    spare_reasons = spare_df["Downtime_Reason"].dropna().astype(str).str.strip()
+    spare_reasons = spare_reasons[spare_reasons != ""]
+
+    spare_reasons_str = ", ".join(
+        spare_reasons.value_counts().head(3).index.tolist()
+    ) if not spare_reasons.empty else "No spare parts shortage signals found"
+
+    prompt = f"""
+Generate actions for the next shift based on this machine's performance data.
+
+Machine: {machine_id}
+Shift: {shift_label}
+
+Available data:
+- IN_REPAIR duration: {in_repair_min} minutes
+- WAIT_REPAIR duration: {wait_repair_min} minutes
+- WAIT_PM duration: {wait_pm_min} minutes
+- WAIT_REPAIR percentage of shift: {wait_repair_pct}%
+- WAIT_PM percentage of shift: {wait_pm_pct}%
+- Total downtime: {downtime_min} minutes
+- Top non-machine delay reasons: {top_non_machine_str}
+- Spare parts shortage duration: {spare_min} minutes
+- Spare parts shortage reasons: {spare_reasons_str}
+
+Write exactly 3 bullet points using • as the bullet symbol.
+Each bullet point must be an action for the next shift team.
+Focus on what to do for this machine, not just what happened.
+Be direct, practical, and operational.
 Do not add headers.
 Do not add closing remarks.
 Do not use motivational language.
@@ -387,6 +526,69 @@ def render_ai_summary_section(summary_key, prompt_fn, *prompt_args):
                 ">
                     <span style="color:#e0e0e0; font-size:14px; line-height:1.6;">
                         {st.session_state.ai_summary}
+                    </span>
+                </div>
+            """, unsafe_allow_html=True)
+
+def render_actions_next_shift_section(summary_key, prompt_fn, *prompt_args):
+    st.divider()
+    st.title("Actions for Next Shift")
+
+    if st.button("✅ Generate Actions for Next Shift", key=f"actions_btn_{summary_key}"):
+        with st.spinner("Generating actions with Gemini..."):
+            prompt = prompt_fn(*prompt_args)
+            result = call_gemini(prompt)
+            st.session_state.actions_summary = result
+            st.session_state.actions_summary_key = summary_key
+
+    if (
+        st.session_state.actions_summary
+        and st.session_state.actions_summary_key == summary_key
+    ):
+        action_lines = [
+            l.strip()
+            for l in st.session_state.actions_summary.split("\n")
+            if l.strip().startswith("•")
+        ]
+
+        if not action_lines:
+            action_lines = [
+                "• " + l.strip()
+                for l in st.session_state.actions_summary.split("•")
+                if l.strip()
+            ]
+
+        if action_lines:
+            actions_html = "<br>".join([
+                f'<div style="margin-bottom:8px;">{line}</div>'
+                for line in action_lines[:3]
+            ])
+
+            st.markdown(f"""
+                <div style="
+                    background:#1e2130;
+                    border-radius:10px;
+                    padding:16px 20px;
+                    margin-top:8px;
+                    border-left:5px solid #2ecc71;
+                ">
+                    <span style="color:#e0e0e0; font-size:14px; line-height:1.6;">
+                        {actions_html}
+                    </span>
+                </div>
+            """, unsafe_allow_html=True)
+
+        else:
+            st.markdown(f"""
+                <div style="
+                    background:#1e2130;
+                    border-radius:10px;
+                    padding:16px 20px;
+                    margin-top:8px;
+                    border-left:5px solid #2ecc71;
+                ">
+                    <span style="color:#e0e0e0; font-size:14px; line-height:1.6;">
+                        {st.session_state.actions_summary}
                     </span>
                 </div>
             """, unsafe_allow_html=True)
@@ -853,17 +1055,35 @@ if st.session_state.page == "overview":
     if not ov_df.empty:
         if selected_machine == "All":
             summary_key = f"overview_{ov_active}_all"
+
             render_ai_summary_section(
                 summary_key,
                 build_prompt_all,
                 ov_df,
                 ov_shift_label
             )
+
+            render_actions_next_shift_section(
+                summary_key,
+                build_actions_prompt_all,
+                ov_df,
+                ov_shift_label
+            )
+
         else:
             summary_key = f"overview_{ov_active}_{selected_machine}"
+
             render_ai_summary_section(
                 summary_key,
                 build_prompt_machine,
+                selected_machine,
+                ov_df,
+                ov_shift_label
+            )
+
+            render_actions_next_shift_section(
+                summary_key,
+                build_actions_prompt_machine,
                 selected_machine,
                 ov_df,
                 ov_shift_label
