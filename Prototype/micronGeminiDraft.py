@@ -42,7 +42,6 @@ if "overview_machine" not in st.session_state:
 if "show_dataset" not in st.session_state:
     st.session_state.show_dataset = False
 
-
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 GEMINI_MODEL = st.secrets["GEMINI_MODEL"]
 
