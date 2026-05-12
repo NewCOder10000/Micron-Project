@@ -744,7 +744,7 @@ if st.session_state.page == "overview":
     with fc3:
         metric_box(
             "Total Downtime",
-            f'<span style="color:#FF0000;">{total_downtime} min</span>',
+            f'{total_downtime} min</span>',
             "All non-UP_PRODUCT time"
         )
 
