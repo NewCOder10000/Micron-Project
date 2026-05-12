@@ -41,6 +41,10 @@ if "overview_machine" not in st.session_state:
     st.session_state.overview_machine = "All"
 if "show_dataset" not in st.session_state:
     st.session_state.show_dataset = False
+if "ai_summary_store" not in st.session_state:
+    st.session_state.ai_summary_store = {}
+if "actions_summary_store" not in st.session_state:
+    st.session_state.actions_summary_store = {}
 
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 GEMINI_MODEL = st.secrets["GEMINI_MODEL"]
@@ -475,123 +479,98 @@ def render_ai_summary_section(summary_key, prompt_fn, *prompt_args):
     st.markdown("### 🤖 AI Summary")
 
     if st.button("✨ Generate AI Summary", key=f"ai_btn_{summary_key}"):
-        with st.spinner("Generating summary with Gemini..."):
-            prompt = prompt_fn(*prompt_args)
-            result = call_gemini(prompt)
-            st.session_state.ai_summary = result
-            st.session_state.ai_summary_key = summary_key
+        with st.spinner("Generating AI summary with Gemini..."):
+            try:
+                prompt = prompt_fn(*prompt_args)
+                result = call_gemini(prompt)
+                st.session_state.ai_summary_store[summary_key] = result
+            except Exception as e:
+                st.session_state.ai_summary_store[summary_key] = f"❌ Error generating AI summary: {e}"
 
-    if st.session_state.ai_summary and st.session_state.ai_summary_key == summary_key:
+    result = st.session_state.ai_summary_store.get(summary_key)
+
+    if result:
         lines = [
             l.strip()
-            for l in st.session_state.ai_summary.split("\n")
+            for l in result.split("\n")
             if l.strip().startswith("•")
         ]
 
         if not lines:
             lines = [
                 "• " + l.strip()
-                for l in st.session_state.ai_summary.split("•")
+                for l in result.split("•")
                 if l.strip()
             ]
 
-        if lines:
-            bullet_html = "<br>".join([
-                f'<div style="margin-bottom:8px;">{line}</div>'
-                for line in lines[:7]
-            ])
+        bullet_html = "<br>".join([
+            f'<div style="margin-bottom:8px;">{line}</div>'
+            for line in lines[:7]
+        ]) if lines else result
 
-            st.markdown(f"""
-                <div style="
-                    background:#1e2130;
-                    border-radius:10px;
-                    padding:16px 20px;
-                    margin-top:8px;
-                    border-left:5px solid #4a9eff;
-                ">
-                    <span style="color:#e0e0e0; font-size:14px; line-height:1.6;">
-                        {bullet_html}
-                    </span>
-                </div>
-            """, unsafe_allow_html=True)
-
-        else:
-            st.markdown(f"""
-                <div style="
-                    background:#1e2130;
-                    border-radius:10px;
-                    padding:16px 20px;
-                    margin-top:8px;
-                    border-left:5px solid #4a9eff;
-                ">
-                    <span style="color:#e0e0e0; font-size:14px; line-height:1.6;">
-                        {st.session_state.ai_summary}
-                    </span>
-                </div>
-            """, unsafe_allow_html=True)
+        st.markdown(f"""
+            <div style="
+                background:#1e2130;
+                border-radius:10px;
+                padding:16px 20px;
+                margin-top:8px;
+                border-left:5px solid #4a9eff;
+            ">
+                <span style="color:#e0e0e0; font-size:14px; line-height:1.6;">
+                    {bullet_html}
+                </span>
+            </div>
+        """, unsafe_allow_html=True)
 
 def render_actions_next_shift_section(summary_key, prompt_fn, *prompt_args):
     st.divider()
-    st.markdown("Actions for Next Shift")
+    st.markdown("### ✅ Actions for Next Shift")
+
+    actions_key = f"actions_{summary_key}"
 
     if st.button("✅ Generate Actions for Next Shift", key=f"actions_btn_{summary_key}"):
-        with st.spinner("Generating actions with Gemini..."):
-            prompt = prompt_fn(*prompt_args)
-            result = call_gemini(prompt)
-            st.session_state.actions_summary = result
-            st.session_state.actions_summary_key = summary_key
+        with st.spinner("Generating actions for next shift with Gemini..."):
+            try:
+                prompt = prompt_fn(*prompt_args)
+                result = call_gemini(prompt)
+                st.session_state.actions_summary_store[actions_key] = result
+            except Exception as e:
+                st.session_state.actions_summary_store[actions_key] = f"❌ Error generating actions: {e}"
 
-    if (
-        st.session_state.actions_summary
-        and st.session_state.actions_summary_key == summary_key
-    ):
+    result = st.session_state.actions_summary_store.get(actions_key)
+
+    if result:
         action_lines = [
             l.strip()
-            for l in st.session_state.actions_summary.split("\n")
+            for l in result.split("\n")
             if l.strip().startswith("•")
         ]
 
         if not action_lines:
             action_lines = [
                 "• " + l.strip()
-                for l in st.session_state.actions_summary.split("•")
+                for l in result.split("•")
                 if l.strip()
             ]
 
-        if action_lines:
-            actions_html = "<br>".join([
-                f'<div style="margin-bottom:8px;">{line}</div>'
-                for line in action_lines[:3]
-            ])
+        actions_html = "<br>".join([
+            f'<div style="margin-bottom:8px;">{line}</div>'
+            for line in action_lines[:3]
+        ]) if action_lines else result
 
-            st.markdown(f"""
-                <div style="
-                    background:#1e2130;
-                    border-radius:10px;
-                    padding:16px 20px;
-                    margin-top:8px;
-                    border-left:5px solid #2ecc71;
-                ">
-                    <span style="color:#e0e0e0; font-size:14px; line-height:1.6;">
-                        {actions_html}
-                    </span>
-                </div>
-            """, unsafe_allow_html=True)
-
-        else:
-            st.markdown(f"""
-                <div style="
-                    background:#1e2130;
-                    border-radius:10px;
-                    padding:16px 20px;
-                    margin-top:8px;
-                    border-left:5px solid #2ecc71;
-                ">
-                    <span style="color:#e0e0e0; font-size:14px; line-height:1.6;">
-                        {st.session_state.actions_summary}
-                    </span>
-                </div>
-            """, unsafe_allow_html=True)
+        st.markdown(f"""
+            <div style="
+                background:#1e2130;
+                border-radius:10px;
+                padding:16px 20px;
+                margin-top:8px;
+                border-left:5px solid #2ecc71;
+            ">
+                <span style="color:#e0e0e0; font-size:14px; line-height:1.6;">
+                    {actions_html}
+                </span>
+            </div>
+        """, unsafe_allow_html=True)
 
 # ── SIDEBAR NAVIGATION ─────────────────────────────────────────────────────────
 if st.session_state.df is not None and st.session_state.page != "upload":
