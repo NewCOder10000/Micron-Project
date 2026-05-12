@@ -1,11 +1,12 @@
 import streamlit as st
 import pandas as pd
 import os
-import google.genai as genai
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from datetime import datetime
 import shutil
+import requests
+import google.genai as genai
 
 st.set_page_config(page_title="Micron Streamlit Dummy", layout="wide")
 
@@ -41,16 +42,13 @@ if "overview_machine" not in st.session_state:
     st.session_state.overview_machine = "All"
 if "show_dataset" not in st.session_state:
     st.session_state.show_dataset = False
+if "ai_summary_cache" not in st.session_state:
+    st.session_state.ai_summary_cache = {}
+if "actions_summary_cache" not in st.session_state:
+    st.session_state.actions_summary_cache = {}
 
-GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-GEMINI_MODEL = st.secrets["GEMINI_MODEL"]
-
-@st.cache_resource
-def get_gemini_client():
-    return genai.Client(
-        api_key=GEMINI_API_KEY,
-        http_options={"timeout": 30},
-    )
+OLLAMA_URL = "http://localhost:11434/api/generate"
+OLLAMA_MODEL = "llama3.2:3b"
 
 # ── HELPER FUNCTIONS ───────────────────────────────────────────────────────────
 def clear_dataset_folder():
@@ -132,35 +130,61 @@ def get_pct_color(pct):
 def get_util_color(pct, threshold):
     return "#2ecc71" if pct >= threshold else "#e74c3c"
 
-def call_gemini(prompt):
+def call_ollama(prompt):
     import requests
-    import time
-    GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
-    for attempt in range(3):
-        try:
-            resp = requests.post(
-                f"{GEMINI_URL}?key={GEMINI_API_KEY}",
-                json={"contents": [{"parts": [{"text": prompt}]}]},
-                timeout=(10, 60),
-            )
-            if resp.status_code in (429, 503):
-                time.sleep(10 * (attempt + 1))
-                continue
-            resp.raise_for_status()
-            return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-        except requests.exceptions.ConnectTimeout:
-            if attempt == 2:
-                return "❌ Connection timed out. Check your network or firewall."
-            time.sleep(5)
-        except requests.exceptions.ReadTimeout:
-            if attempt == 2:
-                return "❌ Gemini took too long to respond. Try again."
-            time.sleep(5)
-        except Exception as e:
-            if attempt == 2:
-                return f"❌ Error contacting Gemini: {e}"
-            time.sleep(5)
-    return "❌ Failed after 3 attempts."
+
+    payload = {
+        "model": OLLAMA_MODEL,
+        "prompt": prompt,
+        "stream": False,
+        "options": {
+            "temperature": 0.2,
+            "num_predict": 500
+        }
+    }
+
+    try:
+        resp = requests.post(
+            OLLAMA_URL,
+            json=payload,
+            timeout=(10, 120)
+        )
+
+        if resp.status_code != 200:
+            return f"""
+❌ Ollama API failed.
+
+Status code: {resp.status_code}
+
+Error:
+{resp.text}
+"""
+
+        data = resp.json()
+
+        if "response" not in data:
+            return f"❌ Ollama returned an unexpected response: {data}"
+
+        return data["response"].strip()
+
+    except requests.exceptions.ConnectTimeout:
+        return "❌ Could not connect to Ollama. Please check whether Ollama is running."
+
+    except requests.exceptions.ReadTimeout:
+        return "❌ Ollama took too long to respond. Try a smaller model such as llama3.2:3b."
+
+    except requests.exceptions.ConnectionError:
+        return """
+❌ Could not connect to Ollama.
+
+Please make sure Ollama is running locally:
+1. Open Command Prompt
+2. Run: ollama serve
+3. In another Command Prompt, run: ollama run llama3.2:3b
+"""
+
+    except Exception as e:
+        return f"❌ Error contacting Ollama: {e}"
 
 def build_prompt_all(filtered_df, shift_label):
     fdf = filtered_df.copy()
@@ -475,11 +499,16 @@ def render_ai_summary_section(summary_key, prompt_fn, *prompt_args):
     st.markdown("### 🤖 AI Summary")
 
     if st.button("✨ Generate AI Summary", key=f"ai_btn_{summary_key}"):
-        with st.spinner("Generating summary with Gemini..."):
-            prompt = prompt_fn(*prompt_args)
-            result = call_gemini(prompt)
-            st.session_state.ai_summary = result
+        if summary_key in st.session_state.ai_summary_cache:
+            st.session_state.ai_summary = st.session_state.ai_summary_cache[summary_key]
             st.session_state.ai_summary_key = summary_key
+        else:
+            with st.spinner("Generating summary with Ollama..."):
+                prompt = prompt_fn(*prompt_args)
+                result = call_ollama(prompt)
+                st.session_state.ai_summary = result
+                st.session_state.ai_summary_key = summary_key
+                st.session_state.ai_summary_cache[summary_key] = result
 
     if st.session_state.ai_summary and st.session_state.ai_summary_key == summary_key:
         lines = [
@@ -532,14 +561,19 @@ def render_ai_summary_section(summary_key, prompt_fn, *prompt_args):
 
 def render_actions_next_shift_section(summary_key, prompt_fn, *prompt_args):
     st.divider()
-    st.markdown("Actions for Next Shift")
+    st.markdown("### ✅ Actions for Next Shift")
 
     if st.button("✅ Generate Actions for Next Shift", key=f"actions_btn_{summary_key}"):
-        with st.spinner("Generating actions with Gemini..."):
-            prompt = prompt_fn(*prompt_args)
-            result = call_gemini(prompt)
-            st.session_state.actions_summary = result
+        if summary_key in st.session_state.actions_summary_cache:
+            st.session_state.actions_summary = st.session_state.actions_summary_cache[summary_key]
             st.session_state.actions_summary_key = summary_key
+        else:
+            with st.spinner("Generating actions with Ollama..."):
+                prompt = prompt_fn(*prompt_args)
+                result = call_ollama(prompt)
+                st.session_state.actions_summary = result
+                st.session_state.actions_summary_key = summary_key
+                st.session_state.actions_summary_cache[summary_key] = result
 
     if (
         st.session_state.actions_summary
