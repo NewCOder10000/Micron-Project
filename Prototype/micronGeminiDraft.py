@@ -902,7 +902,6 @@ if st.session_state.page == "overview":
 
             for machine in machines:
                 mdf = tl_df[tl_df["Machine_ID"] == machine].sort_values("Start_Time")
-
                 segments_html = ""
                 for _, row in mdf.iterrows():
                     seg_start = (row["Start_Time"] - t_min).total_seconds() / 60.0
@@ -980,7 +979,15 @@ if st.session_state.page == "overview":
         marker_color=colors,
         text=[f"{u}%" for u in chart_df["Utilization"]],
         textposition="outside",
-        name="Utilization"
+        name="Utilization",
+        customdata=chart_df[["Target"]],
+            hovertemplate=(
+            "<b>Machine:</b> %{x}<br>"
+            "<b>Date:</b> " + now + "<br>"
+            "<b>Utilization:</b> %{y}%<br>"
+            "<b>Target:</b> %{customdata[0]}%<br>"
+            "<extra></extra>"
+        )
     ))
     
     x_vals = []
@@ -1000,7 +1007,15 @@ if st.session_state.page == "overview":
             symbol="line-ew",
             line=dict(width=2, color="#f1c40f")
         ),
-        name="Target"
+        name="Target",
+        customdata=chart_df[["Utilization"]],
+        hovertemplate=(
+            "<b>Machine:</b> %{x}<br>"
+            "<b>Date:</b> " + now + "<br>"
+            "<b>Target:</b> %{y}%<br>"
+            "<b>Utilization:</b> %{customdata[0]}%<br>"
+            "<extra></extra>"
+        )
     ))
 
     fig.update_layout(

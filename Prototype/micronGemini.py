@@ -700,15 +700,16 @@ if st.session_state.page == "overview":
     # Row 1: 4 boxes
     fc1, fc2, fc3, fc4 = st.columns(4)
 
-    with fc1:
-        colored_metric(
-            "Fleet Utilization",
-            f"{fleet_util}%",
-            f"UP_PRODUCT across {total_machines} machines",
-            get_util_color(fleet_util, st.session_state.util_threshold)
-        )
+    STATUS_COLORS = {
+        "UP_PRODUCT": "#008000",
+        "IDLE":       "#5F5FFF",
+        "WAIT_REPAIR":"#FF0000",
+        "IN_REPAIR":  "#FF0000",
+        "WAIT_PM":    "#FFC0CB",
+        "IN_PM":      "#FFC0CB",
+    }
 
-    with fc2:
+    with fc1:
         if selected_machine != "All":
             # For individual machine view
             machine_status = "Active" if fleet_util > 0 else "Inactive"
@@ -732,37 +733,45 @@ if st.session_state.page == "overview":
                 "Machines with UP_PRODUCT activity"
             )
 
+    with fc2:
+        colored_metric(
+            "Average Utilization",
+            f"{fleet_util}%",
+            f"UP_PRODUCT across {total_machines} machines",
+            get_util_color(fleet_util, st.session_state.util_threshold)
+        )
+
     with fc3:
         metric_box(
             "Total Downtime",
-            f"{total_downtime} min",
+            f'<span style="color:#FF0000;">{total_downtime} min</span>',
             "All non-UP_PRODUCT time"
         )
 
     with fc4:
         metric_box(
             "Total Repair Time",
-            f"{fleet_repair} min",
+            f'<span style="color:#FF0000;">{fleet_repair} min</span>',
             "WAIT_REPAIR + IN_REPAIR"
         )
 
     st.write("")
 
     # Row 2: 4 boxes
-    fc5, fc6, fc7, fc8 = st.columns(4)
+    spacer_left, fc5, fc6, spacer_right = st.columns([1, 1, 1, 1])
 
     with fc5:
         metric_box(
-            "Total Idle Time",
-            f"{fleet_idle} min",
-            "IDLE status across all machines"
+            "Total PM Time",
+            f'<span style="color:#FFC0CB;">{fleet_pm} min</span>',
+            "WAIT_PM + IN_PM"
         )
 
     with fc6:
         metric_box(
-            "Total PM Time",
-            f"{fleet_pm} min",
-            "WAIT_PM + IN_PM"
+            "Total Idle Time",
+            f'<span style="color:#5F5FFF;">{fleet_idle} min</span>',
+            "IDLE status across all machines"
         )
 
     st.divider()
@@ -841,15 +850,6 @@ if st.session_state.page == "overview":
     st.markdown("#### Machine Performance Timeline")
     st.write("Chronological status timeline per machine · hover for details")
 
-    STATUS_COLORS = {
-        "UP_PRODUCT": "#008000",
-        "IDLE":       "#5F5FFF",
-        "WAIT_REPAIR":"#FF0000",
-        "IN_REPAIR":  "#FF0000",
-        "WAIT_PM":    "#FFC0CB",
-        "IN_PM":      "#FFC0CB",
-    }
-
     def machine_util_pct(m):
         mdf = ov_df[ov_df["Machine_ID"] == m]
         tot = mdf["Duration_Min"].sum()
@@ -902,7 +902,6 @@ if st.session_state.page == "overview":
 
             for machine in machines:
                 mdf = tl_df[tl_df["Machine_ID"] == machine].sort_values("Start_Time")
-
                 segments_html = ""
                 for _, row in mdf.iterrows():
                     seg_start = (row["Start_Time"] - t_min).total_seconds() / 60.0
@@ -980,7 +979,15 @@ if st.session_state.page == "overview":
         marker_color=colors,
         text=[f"{u}%" for u in chart_df["Utilization"]],
         textposition="outside",
-        name="Utilization"
+        name="Utilization",
+        customdata=chart_df[["Target"]],
+            hovertemplate=(
+            "<b>Machine:</b> %{x}<br>"
+            "<b>Date:</b> " + now + "<br>"
+            "<b>Utilization:</b> %{y}%<br>"
+            "<b>Target:</b> %{customdata[0]}%<br>"
+            "<extra></extra>"
+        )
     ))
     
     x_vals = []
@@ -1000,7 +1007,15 @@ if st.session_state.page == "overview":
             symbol="line-ew",
             line=dict(width=2, color="#f1c40f")
         ),
-        name="Target"
+        name="Target",
+        customdata=chart_df[["Utilization"]],
+        hovertemplate=(
+            "<b>Machine:</b> %{x}<br>"
+            "<b>Date:</b> " + now + "<br>"
+            "<b>Target:</b> %{y}%<br>"
+            "<b>Utilization:</b> %{customdata[0]}%<br>"
+            "<extra></extra>"
+        )
     ))
 
     fig.update_layout(
