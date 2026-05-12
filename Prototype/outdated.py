@@ -1,6 +1,3 @@
-oh no
-Kylie Teo
-​ivan@unforgettable.com​
 import streamlit as st
 import pandas as pd
 import os
