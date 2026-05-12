@@ -52,6 +52,16 @@ def get_gemini_client():
         http_options={"timeout": 30},
     )
 
+def clear_ai_outputs():
+    st.session_state.ai_summary = None
+    st.session_state.ai_summary_key = None
+    st.session_state.actions_summary = None
+    st.session_state.actions_summary_key = None
+
+def make_ai_filter_key(page, shift, machine):
+    machine_key = "all" if machine == "All" else str(machine).strip()
+    return f"{page}_{shift}_{machine_key}"
+
 # ── HELPER FUNCTIONS ───────────────────────────────────────────────────────────
 def clear_dataset_folder():
     os.makedirs(DATASET_FOLDER, exist_ok=True)
@@ -135,32 +145,73 @@ def get_util_color(pct, threshold):
 def call_gemini(prompt):
     import requests
     import time
+
     GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt}
+                ]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.2,
+            "maxOutputTokens": 700
+        }
+    }
+
     for attempt in range(3):
         try:
             resp = requests.post(
                 f"{GEMINI_URL}?key={GEMINI_API_KEY}",
-                json={"contents": [{"parts": [{"text": prompt}]}]},
+                json=payload,
                 timeout=(10, 60),
             )
-            if resp.status_code in (429, 503):
-                time.sleep(10 * (attempt + 1))
-                continue
-            resp.raise_for_status()
-            return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+
+            # Show useful error instead of hiding it
+            if resp.status_code != 200:
+                try:
+                    err = resp.json()
+                except Exception:
+                    err = resp.text
+
+                if resp.status_code in (429, 503):
+                    if attempt < 2:
+                        time.sleep(5)
+                        continue
+
+                return f"""
+❌ Gemini API failed.
+
+Status code: {resp.status_code}
+
+Error:
+{err}
+"""
+
+            data = resp.json()
+
+            if "candidates" not in data or not data["candidates"]:
+                return f"❌ Gemini returned no candidates. Full response: {data}"
+
+            return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+
         except requests.exceptions.ConnectTimeout:
             if attempt == 2:
-                return "❌ Connection timed out. Check your network or firewall."
+                return "❌ Connection timed out. Check network/firewall/API access."
             time.sleep(5)
+
         except requests.exceptions.ReadTimeout:
             if attempt == 2:
-                return "❌ Gemini took too long to respond. Try again."
+                return "❌ Gemini took too long to respond. Try a smaller prompt or lower maxOutputTokens."
             time.sleep(5)
+
         except Exception as e:
-            if attempt == 2:
-                return f"❌ Error contacting Gemini: {e}"
-            time.sleep(5)
-    return "❌ Failed after 3 attempts."
+            return f"❌ Error contacting Gemini: {e}"
+
+    return "❌ Gemini failed after 3 attempts."
 
 def build_prompt_all(filtered_df, shift_label):
     fdf = filtered_df.copy()
@@ -478,6 +529,7 @@ def render_ai_summary_section(summary_key, prompt_fn, *prompt_args):
         with st.spinner("Generating summary with Gemini..."):
             prompt = prompt_fn(*prompt_args)
             result = call_gemini(prompt)
+
             st.session_state.ai_summary = result
             st.session_state.ai_summary_key = summary_key
 
@@ -532,12 +584,13 @@ def render_ai_summary_section(summary_key, prompt_fn, *prompt_args):
 
 def render_actions_next_shift_section(summary_key, prompt_fn, *prompt_args):
     st.divider()
-    st.markdown("Actions for Next Shift")
+    st.markdown("### ✅ Actions for Next Shift")
 
     if st.button("✅ Generate Actions for Next Shift", key=f"actions_btn_{summary_key}"):
         with st.spinner("Generating actions with Gemini..."):
             prompt = prompt_fn(*prompt_args)
             result = call_gemini(prompt)
+
             st.session_state.actions_summary = result
             st.session_state.actions_summary_key = summary_key
 
@@ -673,6 +726,19 @@ if st.session_state.page == "overview":
     if selected_machine != "All":
         ov_df = ov_df[ov_df["Machine_ID"] == selected_machine].copy()
 
+    # ── CLEAR AI OUTPUTS WHEN SHIFT OR MACHINE FILTER CHANGES ─────────────────────
+    current_ai_filter_key = make_ai_filter_key(
+        "overview",
+        ov_active,
+        selected_machine
+    )
+
+    previous_ai_filter_key = st.session_state.get("previous_ai_filter_key")
+
+    if previous_ai_filter_key != current_ai_filter_key:
+        clear_ai_outputs()
+        st.session_state.previous_ai_filter_key = current_ai_filter_key
+
     st.write("")
 
     ov_shift_label = {
@@ -681,8 +747,12 @@ if st.session_state.page == "overview":
         "night": "Night Shift (19:00 – 07:00)",
     }[ov_active]
 
-    if selected_machine != "All":
-        ov_shift_label = f"{ov_shift_label} · {selected_machine}"
+    if selected_machine == "All":
+        summary_key = make_ai_filter_key(
+            "overview",
+            ov_active,
+            selected_machine
+        )
 
     total_machines = ov_df["Machine_ID"].nunique()
     total_dur = ov_df["Duration_Min"].sum()
@@ -1068,9 +1138,13 @@ if st.session_state.page == "overview":
 
     # ── AI SUMMARY SECTION ───────────────────────────────────────────────────
     if not ov_df.empty:
-        if selected_machine == "All":
-            summary_key = f"overview_{ov_active}_all"
+        summary_key = make_ai_filter_key(
+            "overview",
+            ov_active,
+            selected_machine
+        )
 
+        if selected_machine == "All":
             render_ai_summary_section(
                 summary_key,
                 build_prompt_all,
@@ -1086,8 +1160,6 @@ if st.session_state.page == "overview":
             )
 
         else:
-            summary_key = f"overview_{ov_active}_{selected_machine}"
-
             render_ai_summary_section(
                 summary_key,
                 build_prompt_machine,
@@ -1259,6 +1331,8 @@ elif st.session_state.page == "upload":
 
             st.session_state.df = df
             st.session_state.filename = uploaded_file.name
+            clear_ai_outputs()
+            st.session_state.current_ai_filter_key = None
             st.session_state.page = "overview"
             st.rerun()
 
