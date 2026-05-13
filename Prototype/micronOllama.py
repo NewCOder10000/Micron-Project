@@ -1112,29 +1112,6 @@ if st.session_state.page == "overview":
             tl_legend_html += '</div>'
             st.markdown(tl_legend_html, unsafe_allow_html=True)
 
-        st.divider()
-
-    # ── DATASET PREVIEW SECTION ──────────────────────────────────────────────
-    st.divider()
-    st.markdown("#### 📊 Dataset Preview")
-
-    if st.button(
-        "Show Dataset" if not st.session_state.show_dataset else "Hide Dataset",
-        key="toggle_dataset_btn"
-    ):
-        st.session_state.show_dataset = not st.session_state.show_dataset
-        st.rerun()
-
-    if st.session_state.show_dataset:
-        st.caption("Showing dataset based on current Shift and Machine filters.")
-        st.dataframe(
-            ov_df,
-            use_container_width=True,
-            hide_index=True
-    )
-    else:
-        st.info("Dataset preview is hidden. Click **Show Dataset** to view it.")
-
     # ── AI SUMMARY SECTION ───────────────────────────────────────────────────
     if not ov_df.empty:
         if selected_machine == "All":
@@ -1179,12 +1156,36 @@ if st.session_state.page == "overview":
 
     st.divider()
 
+    st.markdown("#### ⚡ Clear Cache")
+
     if st.button("🧹 Clear AI Cache"):
         st.session_state.ai_summary_cache = {}
         st.session_state.actions_summary_cache = {}
         st.session_state.ai_summary = None
         st.session_state.actions_summary = None
         st.success("AI cache cleared.")
+
+    st.divider()
+
+    # ── DATASET PREVIEW SECTION ──────────────────────────────────────────────
+    st.markdown("#### 📊 Dataset Preview")
+
+    if st.button(
+        "Show Dataset" if not st.session_state.show_dataset else "Hide Dataset",
+        key="toggle_dataset_btn"
+    ):
+        st.session_state.show_dataset = not st.session_state.show_dataset
+        st.rerun()
+
+    if st.session_state.show_dataset:
+        st.caption("Showing dataset based on current Shift and Machine filters.")
+        st.dataframe(
+            ov_df,
+            use_container_width=True,
+            hide_index=True
+    )
+    else:
+        st.info("Dataset preview is hidden. Click **Show Dataset** to view it.")
 
 # ── PAGE: UPLOADER ────────────────────────────────────────────────────────────
 elif st.session_state.page == "upload":
