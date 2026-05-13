@@ -6,7 +6,6 @@ import plotly.graph_objects as go
 from datetime import datetime
 import shutil
 import requests
-import google.genai as genai
 
 st.set_page_config(page_title="Micron Streamlit Dummy", layout="wide")
 
