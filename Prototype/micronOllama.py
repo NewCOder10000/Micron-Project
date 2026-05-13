@@ -127,7 +127,7 @@ def get_util_color(pct, threshold):
     return "#2ecc71" if pct >= threshold else "#e74c3c"
 
 def render_threshold_sidebar():
-    st.markdown("## 🎯 Utilisation Threshold")
+    st.markdown("## 🎯 Utilization Threshold")
 
     st.session_state.setdefault("util_threshold", 95)
     st.session_state.setdefault("_thresh_slider", int(st.session_state["util_threshold"]))
