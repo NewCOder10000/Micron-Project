@@ -1094,13 +1094,32 @@ if st.session_state.page == "overview":
     st.plotly_chart(fig, use_container_width=True)
 
     st.markdown(
-        "<div style='color:#aaa; font-size:12px; text-align:center; margin-top:10px;'>"
-        "Targets: CMP-01 95% | CVD-01 86% | DIFF-01 85% | ETCH-01 96% | IMP-01 89% | LITHO-01 88%"
-        "</div>",
+        """
+        <div style="
+            background:#1e2130;
+            border-radius:10px;
+            padding:14px 16px;
+            margin-top:12px;
+            text-align:center;
+            border-left:4px solid #f1c40f;
+        ">
+            <div style="color:#ffffff; font-size:14px; font-weight:600; margin-bottom:6px;">
+                Machine Utilization Targets
+            </div>
+            <div style="color:#cccccc; font-size:13px; letter-spacing:0.5px;">
+                CMP-01 <b>95%</b> &nbsp;|&nbsp;
+                CVD-01 <b>86%</b> &nbsp;|&nbsp;
+                DIFF-01 <b>85%</b> &nbsp;|&nbsp;
+                ETCH-01 <b>96%</b> &nbsp;|&nbsp;
+                IMP-01 <b>89%</b> &nbsp;|&nbsp;
+                LITHO-01 <b>88%</b>
+            </div>
+        </div>
+        """,
         unsafe_allow_html=True
     )
 
-        # ── DATASET PREVIEW SECTION ──────────────────────────────────────────────
+    # ── DATASET PREVIEW SECTION ──────────────────────────────────────────────
     st.divider()
     st.markdown("#### 📊 Dataset Preview")
 
