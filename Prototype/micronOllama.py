@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from datetime import datetime
 import shutil
-import requests
 
 st.set_page_config(page_title="Micron Streamlit Dummy", layout="wide")
 
@@ -129,6 +128,83 @@ def get_pct_color(pct):
 def get_util_color(pct, threshold):
     return "#2ecc71" if pct >= threshold else "#e74c3c"
 
+def build_summary_context(filtered_df):
+    fdf = filtered_df.copy()
+    fdf["Status"] = fdf["Status"].astype(str).str.strip()
+    fdf["Machine_ID"] = fdf["Machine_ID"].astype(str).str.strip()
+
+    total_duration = fdf["Duration_Min"].sum()
+    up_duration = fdf[fdf["Status"] == "UP_PRODUCT"]["Duration_Min"].sum()
+
+    line_util_pct = round((up_duration / total_duration) * 100, 1) if total_duration > 0 else 0
+
+    downtime_df = fdf[fdf["Status"] != "UP_PRODUCT"].copy()
+    total_downtime_min = int(downtime_df["Duration_Min"].sum())
+
+    # Machine availability/utilization lines
+    avail_rows = []
+
+    for machine in sorted(fdf["Machine_ID"].dropna().unique()):
+        mdf = fdf[fdf["Machine_ID"] == machine]
+        m_total = mdf["Duration_Min"].sum()
+        m_up = mdf[mdf["Status"] == "UP_PRODUCT"]["Duration_Min"].sum()
+        m_downtime = mdf[mdf["Status"] != "UP_PRODUCT"]["Duration_Min"].sum()
+
+        m_util = round((m_up / m_total) * 100, 1) if m_total > 0 else 0
+        m_down_pct = round((m_downtime / m_total) * 100, 1) if m_total > 0 else 0
+
+        avail_rows.append({
+            "Machine_ID": machine,
+            "Utilization": m_util,
+            "Downtime_Pct": m_down_pct,
+            "Downtime_Min": int(m_downtime)
+        })
+
+    avail_df = pd.DataFrame(avail_rows)
+
+    if not avail_df.empty:
+        avail_df = avail_df.sort_values("Utilization", ascending=True)
+
+        avail_lines = "\n".join([
+            f"- {row['Machine_ID']}: {row['Utilization']}% utilization, {row['Downtime_Min']} min downtime"
+            for _, row in avail_df.iterrows()
+        ])
+
+        bottleneck_lines = "\n".join([
+            f"- {row['Machine_ID']}: {row['Downtime_Min']} min downtime, {row['Utilization']}% utilization"
+            for _, row in avail_df.sort_values("Downtime_Min", ascending=False).head(3).iterrows()
+        ])
+    else:
+        avail_lines = "- No machine availability data available"
+        bottleneck_lines = "- No bottleneck data available"
+
+    # Top downtime reasons
+    reason_series = downtime_df["Downtime_Reason"].dropna().astype(str).str.strip()
+    reason_series = reason_series[reason_series != ""]
+    top_reasons = reason_series.value_counts().head(5)
+
+    reasons_lines = "\n".join([
+        f"- {reason}: {count} occurrence(s)"
+        for reason, count in top_reasons.items()
+    ]) if not top_reasons.empty else "- No downtime reasons recorded"
+
+    # Status downtime context
+    status_downtime = downtime_df.groupby("Status")["Duration_Min"].sum().sort_values(ascending=False)
+
+    downtime_context = "\n".join([
+        f"- {status}: {int(minutes)} min"
+        for status, minutes in status_downtime.items()
+    ]) if not status_downtime.empty else "- No downtime status recorded"
+
+    return {
+        "line_util_pct": line_util_pct,
+        "total_downtime_min": total_downtime_min,
+        "avail_lines": avail_lines,
+        "bottleneck_lines": bottleneck_lines,
+        "reasons_lines": reasons_lines,
+        "downtime_context": downtime_context
+    }
+
 def call_ollama(prompt):
     import requests
 
@@ -185,189 +261,72 @@ Please make sure Ollama is running locally:
     except Exception as e:
         return f"❌ Error contacting Ollama: {e}"
 
-def build_prompt_all(filtered_df, shift_label):
-    fdf = filtered_df.copy()
-    fdf["Status"] = fdf["Status"].str.strip()
-    fdf["Machine_ID"] = fdf["Machine_ID"].str.strip()
+def build_ai_summary_prompt(filtered_df, shift_label, machine_filter="All"):
+    summary = build_summary_context(filtered_df)
 
-    total_duration = fdf["Duration_Min"].sum()
-
-    # IN_REPAIR alarm / fault frequency
-    in_repair_df = fdf[fdf["Status"] == "IN_REPAIR"]
-    alarm_series = in_repair_df["Downtime_Reason"].dropna().astype(str).str.strip()
-    alarm_series = alarm_series[alarm_series != ""]
-    top_alarms = alarm_series.value_counts().head(5)
-    top_alarms_str = ", ".join(
-        [f"{reason} ({count} occurrences)" for reason, count in top_alarms.items()]
-    ) if not top_alarms.empty else "No IN_REPAIR fault types recorded"
-
-    # Repair duration comparison
-    in_repair_min = int(fdf[fdf["Status"] == "IN_REPAIR"]["Duration_Min"].sum())
-    wait_repair_min = int(fdf[fdf["Status"] == "WAIT_REPAIR"]["Duration_Min"].sum())
-
-    # WAIT_PM and WAIT_REPAIR percentage
-    wait_pm_min = int(fdf[fdf["Status"] == "WAIT_PM"]["Duration_Min"].sum())
-    wait_repair_pct = round((wait_repair_min / total_duration) * 100, 1) if total_duration > 0 else 0
-    wait_pm_pct = round((wait_pm_min / total_duration) * 100, 1) if total_duration > 0 else 0
-
-    # Non-machine failures
-    non_machine_df = fdf[fdf["Status"].isin(["WAIT_REPAIR", "WAIT_PM"])]
-    non_machine_reasons = non_machine_df["Downtime_Reason"].dropna().astype(str).str.strip()
-    non_machine_reasons = non_machine_reasons[non_machine_reasons != ""]
-    top_non_machine = non_machine_reasons.value_counts().head(5)
-    top_non_machine_str = ", ".join(
-        [f"{reason} ({count} occurrences)" for reason, count in top_non_machine.items()]
-    ) if not top_non_machine.empty else "No people or parts delay reasons recorded"
-
-    # Top 20% downtime contributors
-    downtime_df = fdf[fdf["Status"] != "UP_PRODUCT"]
-    machine_downtime = downtime_df.groupby("Machine_ID")["Duration_Min"].sum().sort_values(ascending=False)
-    top_20_count = max(1, round(len(machine_downtime) * 0.2)) if len(machine_downtime) > 0 else 0
-    top_20 = machine_downtime.head(top_20_count)
-    top_20_str = ", ".join(
-        [f"{machine} ({int(duration)} min)" for machine, duration in top_20.items()]
-    ) if not top_20.empty else "No downtime contributors recorded"
-
-    # Spare parts shortage flags
-    spare_keywords = ["part", "parts", "spare", "material", "component", "stock"]
-    spare_df = downtime_df[
-        downtime_df["Downtime_Reason"].fillna("").astype(str).str.lower().str.contains(
-            "|".join(spare_keywords)
-        )
-    ]
-    spare_flags = spare_df.groupby("Machine_ID")["Duration_Min"].sum().sort_values(ascending=False)
-    spare_flags_str = ", ".join(
-        [f"{machine} ({int(duration)} min)" for machine, duration in spare_flags.items()]
-    ) if not spare_flags.empty else "No spare parts shortage signals found"
+    if machine_filter != "All":
+        scope = f"{machine_filter} only, {shift_label}"
+        bullet1_instruction = f"Bullet 1: How did {machine_filter} perform? Mention its utilization percentage and total downtime."
+        bullet2_instruction = f"Bullet 2: What were the main reasons {machine_filter} lost time? Refer only to the downtime reasons provided."
+        bullet3_instruction = f"Bullet 3: Give one specific next-shift action for {machine_filter}."
+    else:
+        scope = f"All machines, {shift_label}"
+        bullet1_instruction = "Bullet 1: Which machine had the lowest utilization and what was its downtime?"
+        bullet2_instruction = "Bullet 2: What were the top downtime reasons across all machines?"
+        bullet3_instruction = "Bullet 3: Give one specific, actionable recommendation for the next shift."
 
     prompt = f"""
-Generate a structured overall shift-utilization summary for ALL machines, covering exactly 3 insight areas:
+You are a manufacturing performance analyst.
 
- 
+Based only on the metrics below, write a concise dashboard summary with exactly 3 bullet points.
 
-1. Utilization & Availability: % of shift time each machine spent in PRODUCTIVE/RUN state, ranked lowest to highest, with availability rate (% time not in fault/repair/PM).
+SCOPE OF THIS REPORT:
+{scope}
 
- 
+METRICS SUMMARY
+---------------
 
-2. Top Downtime Drivers: rank machines by total downtime contribution, identify the dominant root causes (manpower shortage via WAIT_REPAIR/WAIT_PM dominance, spare parts delays, recurring fault types).
+Overall Line Utilization:
+{summary["line_util_pct"]}%
 
- 
+Machine Utilization:
+{summary["avail_lines"]}
 
-3. Fleet Summary & Actions: overall line utilization %, top 3 bottleneck machines, and key actionable recommendations for the next shift. 
+Top Bottleneck Machines:
+{summary["bottleneck_lines"]}
 
-Shift: {shift_label}
+Top Downtime Reasons:
+{summary["reasons_lines"]}
 
-Available data:
-- Top IN_REPAIR fault types: {top_alarms_str}
-- IN_REPAIR duration: {in_repair_min} minutes
-- WAIT_REPAIR duration: {wait_repair_min} minutes
-- WAIT_PM duration: {wait_pm_min} minutes
-- WAIT_REPAIR percentage of shift: {wait_repair_pct}%
-- WAIT_PM percentage of shift: {wait_pm_pct}%
-- Top non-machine delay reasons: {top_non_machine_str}
-- Top 20% downtime contributors: {top_20_str}
-- Spare parts shortage flags: {spare_flags_str}
+Total Downtime:
+{summary["total_downtime_min"]} minutes
 
-Write exactly 3 bullet points using • as the bullet symbol.
-Each bullet point should correspond to one insight area.
-Be factual, direct, and operational.
-Do not add headers.
-Do not add closing remarks.
-Do not use motivational language.
+Downtime by Status:
+{summary["downtime_context"]}
+
+Write exactly 3 bullet points based on these requirements:
+
+Bullet 1 requirement:
+{bullet1_instruction}
+
+Bullet 2 requirement:
+{bullet2_instruction}
+
+Bullet 3 requirement:
+{bullet3_instruction}
+
+Rules:
+- Output exactly 3 bullet points only.
+- Each bullet point must start with •
+- Each bullet point should be 1 to 2 sentences only.
+- Do not use sub-bullets.
+- Do not add introduction or conclusion.
+- Do not invent data.
+- Only use the numbers provided above.
+- Only mention machines within the scope defined above.
+- Use plain English.
 """
     return prompt
-
-
-def build_prompt_machine(machine_id, filtered_df, shift_label):
-    fdf = filtered_df.copy()
-    fdf["Status"] = fdf["Status"].str.strip()
-    fdf["Machine_ID"] = fdf["Machine_ID"].str.strip()
-
-    mdf = fdf[fdf["Machine_ID"] == machine_id].copy()
-    total_duration = mdf["Duration_Min"].sum()
-
-    # IN_REPAIR alarm / fault frequency
-    in_repair_df = mdf[mdf["Status"] == "IN_REPAIR"]
-    alarm_series = in_repair_df["Downtime_Reason"].dropna().astype(str).str.strip()
-    alarm_series = alarm_series[alarm_series != ""]
-    top_alarms = alarm_series.value_counts().head(5)
-    top_alarms_str = ", ".join(
-        [f"{reason} ({count} occurrences)" for reason, count in top_alarms.items()]
-    ) if not top_alarms.empty else "No IN_REPAIR fault types recorded"
-
-    # Repair duration comparison
-    in_repair_min = int(mdf[mdf["Status"] == "IN_REPAIR"]["Duration_Min"].sum())
-    wait_repair_min = int(mdf[mdf["Status"] == "WAIT_REPAIR"]["Duration_Min"].sum())
-
-    # WAIT_PM and WAIT_REPAIR percentage
-    wait_pm_min = int(mdf[mdf["Status"] == "WAIT_PM"]["Duration_Min"].sum())
-    wait_repair_pct = round((wait_repair_min / total_duration) * 100, 1) if total_duration > 0 else 0
-    wait_pm_pct = round((wait_pm_min / total_duration) * 100, 1) if total_duration > 0 else 0
-
-    # Non-machine failures
-    non_machine_df = mdf[mdf["Status"].isin(["WAIT_REPAIR", "WAIT_PM"])]
-    non_machine_reasons = non_machine_df["Downtime_Reason"].dropna().astype(str).str.strip()
-    non_machine_reasons = non_machine_reasons[non_machine_reasons != ""]
-    top_non_machine = non_machine_reasons.value_counts().head(5)
-    top_non_machine_str = ", ".join(
-        [f"{reason} ({count} occurrences)" for reason, count in top_non_machine.items()]
-    ) if not top_non_machine.empty else "No people or parts delay reasons recorded"
-
-    # Machine downtime contribution
-    machine_downtime = int(mdf[mdf["Status"] != "UP_PRODUCT"]["Duration_Min"].sum())
-
-    # Spare parts shortage flags
-    spare_keywords = ["part", "parts", "spare", "material", "component", "stock"]
-    spare_df = mdf[
-        mdf["Downtime_Reason"].fillna("").astype(str).str.lower().str.contains(
-            "|".join(spare_keywords)
-        )
-    ]
-    spare_min = int(spare_df["Duration_Min"].sum())
-    spare_reasons = spare_df["Downtime_Reason"].dropna().astype(str).str.strip()
-    spare_reasons = spare_reasons[spare_reasons != ""]
-    spare_reasons_str = ", ".join(spare_reasons.value_counts().head(3).index.tolist()) \
-        if not spare_reasons.empty else "No spare parts shortage signals found"
-
-    prompt = f"""
-Generate a structured overall shift-utilization summary for ALL machines, covering exactly 3 insight areas:
-
- 
-
-1. Utilization & Availability: % of shift time each machine spent in PRODUCTIVE/RUN state, ranked lowest to highest, with availability rate (% time not in fault/repair/PM).
-
- 
-
-2. Top Downtime Drivers: rank machines by total downtime contribution, identify the dominant root causes (manpower shortage via WAIT_REPAIR/WAIT_PM dominance, spare parts delays, recurring fault types).
-
- 
-
-3. Fleet Summary & Actions: overall line utilization %, top 3 bottleneck machines, and key actionable recommendations for the next shift.
-
-Machine: {machine_id}
-Shift: {shift_label}
-
-Available data:
-- Top IN_REPAIR fault types: {top_alarms_str}
-- IN_REPAIR duration: {in_repair_min} minutes
-- WAIT_REPAIR duration: {wait_repair_min} minutes
-- WAIT_PM duration: {wait_pm_min} minutes
-- WAIT_REPAIR percentage of shift: {wait_repair_pct}%
-- WAIT_PM percentage of shift: {wait_pm_pct}%
-- Top non-machine delay reasons: {top_non_machine_str}
-- Total downtime contribution: {machine_downtime} minutes
-- Spare parts shortage duration: {spare_min} minutes
-- Spare parts shortage reasons: {spare_reasons_str}
-
-Write exactly 3 bullet points using • as the bullet symbol.
-Each bullet point should correspond to one insight area.
-Be factual, direct, and operational.
-Do not add headers.
-Do not add closing remarks.
-Do not use motivational language.
-"""
-    return prompt
-
 def build_actions_prompt_all(filtered_df, shift_label):
     fdf = filtered_df.copy()
     fdf["Status"] = fdf["Status"].str.strip()
@@ -520,53 +479,56 @@ def render_ai_summary_section(summary_key, prompt_fn, *prompt_args):
                 st.session_state.ai_summary_cache[summary_key] = result
 
     if st.session_state.ai_summary and st.session_state.ai_summary_key == summary_key:
+        raw_text = st.session_state.ai_summary.strip()
+
         lines = [
             l.strip()
-            for l in st.session_state.ai_summary.split("\n")
+            for l in raw_text.split("\n")
             if l.strip().startswith("•")
         ]
 
         if not lines:
-            lines = [
-                "• " + l.strip()
-                for l in st.session_state.ai_summary.split("•")
-                if l.strip()
-            ]
+            parts = [p.strip() for p in raw_text.split("•") if p.strip()]
+            lines = ["• " + p for p in parts]
+
+        cleaned_lines = []
+
+        for line in lines[:3]:
+            line = line.strip()
+
+            # Remove repeated bullet symbols such as "• • text"
+            while line.startswith("• •"):
+                line = "•" + line[3:].strip()
+
+            # Ensure each line starts with exactly one bullet
+            line = line.lstrip("•").strip()
+            line = "• " + line
+
+            cleaned_lines.append(line)
+
+        lines = cleaned_lines
 
         if lines:
             bullet_html = "<br>".join([
                 f'<div style="margin-bottom:8px;">{line}</div>'
-                for line in lines[:3]
+                for line in lines
             ])
-
-            st.markdown(f"""
-                <div style="
-                    background:#1e2130;
-                    border-radius:10px;
-                    padding:16px 20px;
-                    margin-top:8px;
-                    border-left:5px solid #4a9eff;
-                ">
-                    <span style="color:#e0e0e0; font-size:14px; line-height:1.6;">
-                        {bullet_html}
-                    </span>
-                </div>
-            """, unsafe_allow_html=True)
-
         else:
-            st.markdown(f"""
-                <div style="
-                    background:#1e2130;
-                    border-radius:10px;
-                    padding:16px 20px;
-                    margin-top:8px;
-                    border-left:5px solid #4a9eff;
-                ">
-                    <span style="color:#e0e0e0; font-size:14px; line-height:1.6;">
-                        {st.session_state.ai_summary}
-                    </span>
-                </div>
-            """, unsafe_allow_html=True)
+            bullet_html = st.session_state.ai_summary
+
+        st.markdown(f"""
+            <div style="
+                background:#1e2130;
+                border-radius:10px;
+                padding:16px 20px;
+                margin-top:8px;
+                border-left:5px solid #4a9eff;
+            ">
+                <span style="color:#e0e0e0; font-size:14px; line-height:1.6;">
+                    {bullet_html}
+                </span>
+            </div>
+        """, unsafe_allow_html=True)
 
 def render_actions_next_shift_section(summary_key, prompt_fn, *prompt_args):
     st.divider()
@@ -1149,6 +1111,13 @@ if st.session_state.page == "overview":
     else:
         st.info("Dataset preview is hidden. Click **Show Dataset** to view it.")
 
+    if st.button("🧹 Clear AI Cache"):
+        st.session_state.ai_summary_cache = {}
+        st.session_state.actions_summary_cache = {}
+        st.session_state.ai_summary = None
+        st.session_state.actions_summary = None
+        st.success("AI cache cleared.")
+
     # ── AI SUMMARY SECTION ───────────────────────────────────────────────────
     if not ov_df.empty:
         if selected_machine == "All":
@@ -1156,9 +1125,10 @@ if st.session_state.page == "overview":
 
             render_ai_summary_section(
                 summary_key,
-                build_prompt_all,
+                build_ai_summary_prompt,
                 ov_df,
-                ov_shift_label
+                ov_shift_label,
+                "All"
             )
 
             render_actions_next_shift_section(
@@ -1173,10 +1143,10 @@ if st.session_state.page == "overview":
 
             render_ai_summary_section(
                 summary_key,
-                build_prompt_machine,
-                selected_machine,
+                build_ai_summary_prompt,
                 ov_df,
-                ov_shift_label
+                ov_shift_label,
+                selected_machine
             )
 
             render_actions_next_shift_section(
@@ -1310,10 +1280,23 @@ elif st.session_state.page == "viewer":
 
     # ── AI SUMMARY ────────────────────────────────────────────────────────────
     summary_key = f"{selected_machine}__{st.session_state.selected_shift}"
+
     if selected_machine == "All":
-        render_ai_summary_section(summary_key, build_prompt_all, filtered_df, shift_label)
+        render_ai_summary_section(
+            summary_key,
+            build_ai_summary_prompt,
+            filtered_df,
+            shift_label,
+            "All"
+        )
     else:
-        render_ai_summary_section(summary_key, build_prompt_machine, selected_machine, filtered_df, shift_label)
+        render_ai_summary_section(
+            summary_key,
+            build_ai_summary_prompt,
+            filtered_df,
+            shift_label,
+            selected_machine
+        )
 
 # ── PAGE: UPLOADER ────────────────────────────────────────────────────────────
 elif st.session_state.page == "upload":
