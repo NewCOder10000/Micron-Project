@@ -761,10 +761,10 @@ if st.session_state.page == "overview":
             running_color = "#2ecc71" if running_pct >= 50 else "#e74c3c"
 
             html_metric(
-                "Machines Running",
+                "Active Machines",
                 f'<span style="color:{running_color};">{machines_running}</span> '
                 f'<span style="color:#ffffff;">out of {total_machines}</span>',
-                "Machines with UP_PRODUCT activity"
+                " test"
             )
 
     with fc2:
@@ -779,13 +779,13 @@ if st.session_state.page == "overview":
         metric_box(
             "Total Downtime",
             f'{total_downtime} min</span>',
-            "All non-UP_PRODUCT time"
+            "test"
         )
 
     with fc4:
         metric_box(
-            "Total Repair Time",
-            f'<span style="color:#FF0000;">{fleet_repair} min</span>',
+            f'<span style="color:#FF0000;">Total Repair Time</span>',
+            f'{fleet_repair} min',
             "WAIT_REPAIR + IN_REPAIR"
         )
 
