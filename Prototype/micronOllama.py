@@ -996,6 +996,29 @@ if st.session_state.page == "overview":
     util_df = pd.DataFrame(util_list)
     chart_df = target_df.merge(util_df, on="Machine_ID", how="left")
     chart_df["Utilization"] = chart_df["Utilization"].fillna(0)
+    
+    if selected_machine != "All":
+        bar_colors = [
+            "#2ecc71" if (m == selected_machine and u >= t)
+            else "#e74c3c" if m == selected_machine
+            else "rgba(0,0,0,0)"   # fully transparent (hidden)
+            for m, u, t in zip(
+                chart_df["Machine_ID"],
+                chart_df["Utilization"],
+                chart_df["Target"]
+            )
+        ]
+
+        text_vals = [
+            f"{u}%" if m == selected_machine else ""
+            for m, u in zip(chart_df["Machine_ID"], chart_df["Utilization"])
+        ]
+    else:
+        bar_colors = [
+            "#2ecc71" if u >= t else "#e74c3c"
+            for u, t in zip(chart_df["Utilization"], chart_df["Target"])
+        ]
+        text_vals = [f"{u}%" for u in chart_df["Utilization"]]
 
 # ── COLORS ────────────────────────────────────────────────────
     colors = [
@@ -1010,12 +1033,12 @@ if st.session_state.page == "overview":
     fig.add_trace(go.Bar(
         x=chart_df["Machine_ID"],
         y=chart_df["Utilization"],
-        marker_color=colors,
-        text=[f"{u}%" for u in chart_df["Utilization"]],
+        marker_color=bar_colors,
+        text=text_vals,
         textposition="outside",
         name="Utilization",
         customdata=chart_df[["Target"]],
-            hovertemplate=(
+        hovertemplate=(
             "<b>Machine:</b> %{x}<br>"
             "<b>Date:</b> " + now + "<br>"
             "<b>Utilization:</b> %{y}%<br>"
@@ -1024,16 +1047,16 @@ if st.session_state.page == "overview":
         )
     ))
     
-    x_vals = []
-    y_vals = []
-
-    for m, t in zip(chart_df["Machine_ID"], chart_df["Target"]):
-        x_vals += [m, m, None]
-        y_vals += [t, t, None]
+    if selected_machine == "All":
+        target_x = chart_df["Machine_ID"]
+        target_y = chart_df["Target"]
+    else:
+        target_x = [selected_machine]
+        target_y = chart_df[chart_df["Machine_ID"] == selected_machine]["Target"]
 
     fig.add_trace(go.Scatter(
-        x=chart_df["Machine_ID"],
-        y=chart_df["Target"],
+        x=target_x,
+        y=target_y,
         mode="markers",
         marker=dict(
             color="#f1c40f",
@@ -1042,12 +1065,10 @@ if st.session_state.page == "overview":
             line=dict(width=2, color="#f1c40f")
         ),
         name="Target",
-        customdata=chart_df[["Utilization"]],
         hovertemplate=(
             "<b>Machine:</b> %{x}<br>"
             "<b>Date:</b> " + now + "<br>"
             "<b>Target:</b> %{y}%<br>"
-            "<b>Utilization:</b> %{customdata[0]}%<br>"
             "<extra></extra>"
         )
     ))
