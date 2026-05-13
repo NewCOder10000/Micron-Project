@@ -789,7 +789,7 @@ if st.session_state.page == "overview":
     fleet_idle = int(ov_df[ov_df["Status"] == "IDLE"]["Duration_Min"].sum())
     fleet_pm = int(ov_df[ov_df["Status"].isin(["WAIT_PM", "IN_PM"])]["Duration_Min"].sum())
 
-    st.markdown(f"#### Fleet Summary · {ov_shift_label}")
+    st.markdown(f"#### Machine Summary · {ov_shift_label}")
     # ── Additional Fleet Metrics ────────────────────────────────────────────────
     machines_running = ov_df[ov_df["Status"] == "UP_PRODUCT"]["Machine_ID"].nunique()
     total_downtime = int(ov_df[ov_df["Status"] != "UP_PRODUCT"]["Duration_Min"].sum())
@@ -872,94 +872,6 @@ if st.session_state.page == "overview":
         )
 
     st.divider()
-
-    # ── MACHINE PERFORMANCE TIMELINE ──────────────────────────────────────────
-    st.markdown("#### Machine Performance Timeline")
-    st.write("Chronological status timeline per machine · hover for details")
-
-    def machine_util_pct(m):
-        mdf = ov_df[ov_df["Machine_ID"] == m]
-        tot = mdf["Duration_Min"].sum()
-        up = mdf[mdf["Status"] == "UP_PRODUCT"]["Duration_Min"].sum()
-        return round((up / tot) * 100) if tot > 0 else 0
-
-    machines = sorted(ov_df["Machine_ID"].unique(), key=machine_util_pct)
-
-    for machine in machines:
-        mdf = ov_df[ov_df["Machine_ID"] == machine]
-        m_total = mdf["Duration_Min"].sum()
-        m_up = mdf[mdf["Status"] == "UP_PRODUCT"]["Duration_Min"].sum()
-        m_util = round((m_up / m_total) * 100) if m_total > 0 else 0
-        m_repair = int(mdf[mdf["Status"].isin(["WAIT_REPAIR", "IN_REPAIR"])]["Duration_Min"].sum())
-        m_idle = int(mdf[mdf["Status"] == "IDLE"]["Duration_Min"].sum())
-        m_pm = int(mdf[mdf["Status"].isin(["WAIT_PM", "IN_PM"])]["Duration_Min"].sum())
-        util_color = get_util_color(m_util, st.session_state.util_threshold)
-
-
-    tl_df = ov_df.copy()
-    tl_df = tl_df.dropna(subset=["Start_Time", "End_Time"])
-    tl_df = tl_df.sort_values("Start_Time")
-
-    if tl_df.empty:
-        st.warning("No timeline data available for this shift.")
-    else:
-        t_min = tl_df["Start_Time"].min()
-        t_max = tl_df["End_Time"].max()
-        total_span = (t_max - t_min).total_seconds() / 60.0
-
-        if total_span <= 0:
-            st.warning("Timeline span is zero — check Start_Time/End_Time columns.")
-        else:
-            # Build time axis labels (every 2 hours)
-            import math
-            axis_marks = []
-            cur = t_min.replace(minute=0, second=0, microsecond=0)
-            if cur < t_min:
-                cur += pd.Timedelta(hours=1)
-            while cur <= t_max:
-                pct = ((cur - t_min).total_seconds() / 60.0) / total_span * 100
-                axis_marks.append((pct, cur.strftime("%H:%M")))
-                cur += pd.Timedelta(hours=2)
-
-            axis_ticks_html = '<div style="position:relative; height:20px; margin-bottom:4px; margin-left:90px;">'
-            for pct, label in axis_marks:
-                axis_ticks_html += f'<span style="position:absolute; left:{pct:.1f}%; transform:translateX(-50%); font-size:10px; color:#888;">{label}</span>'
-            axis_ticks_html += '</div>'
-            st.markdown(axis_ticks_html, unsafe_allow_html=True)
-
-            for machine in machines:
-                mdf = tl_df[tl_df["Machine_ID"] == machine].sort_values("Start_Time")
-                segments_html = ""
-                for _, row in mdf.iterrows():
-                    seg_start = (row["Start_Time"] - t_min).total_seconds() / 60.0
-                    seg_dur = row["Duration_Min"]
-                    left_pct = (seg_start / total_span) * 100
-                    width_pct = (seg_dur / total_span) * 100
-                    color = STATUS_COLORS.get(row["Status"], "#555555")
-                    start_str = row["Start_Time"].strftime("%H:%M")
-                    end_str = row["End_Time"].strftime("%H:%M") if pd.notna(row["End_Time"]) else "?"
-                    reason = row.get("Downtime_Reason", "")
-                    reason_str = f" · {reason}" if pd.notna(reason) and str(reason).strip() else ""
-                    tooltip = f"{row['Status']}{reason_str} | {now} {start_str}–{end_str} ({int(seg_dur)} min)"
-                    segments_html += f'<div title="{tooltip}" style="position:absolute; left:{left_pct:.2f}%; width:{max(width_pct, 0.3):.2f}%; background:{color}; height:100%; border-right:1px solid #000000; box-sizing:border-box;"></div>'
-
-                st.markdown(f"""
-                    <div style="display:flex; align-items:center; margin-bottom:6px;">
-                        <div style="width:85px; min-width:85px; font-size:12px; color:#cccccc; font-weight:bold; padding-right:8px; text-align:right;">{machine}</div>
-                        <div style="flex:1; position:relative; height:22px; background:#2c2f3e; border-radius:4px; overflow:hidden;">
-                            {segments_html}
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-
-            # Legend (reuse same STATUS_COLORS)
-            tl_legend_html = '<div style="display:flex; gap:16px; flex-wrap:wrap; margin-top:8px; margin-left:90px;">'
-            for status, color in STATUS_COLORS.items():
-                tl_legend_html += f'<span style="font-size:12px; color:#aaaaaa;"><span style="display:inline-block; width:12px; height:12px; background:{color}; border-radius:2px; margin-right:4px;"></span>{status}</span>'
-            tl_legend_html += '</div>'
-            st.markdown(tl_legend_html, unsafe_allow_html=True)
-
-        st.divider()
 
 # ── UTILIZATION CALC ─────────────────────────────────────────
     ov_df["Machine_ID"] = ov_df["Machine_ID"].astype(str).str.strip()
@@ -1111,6 +1023,96 @@ if st.session_state.page == "overview":
         """,
         unsafe_allow_html=True
     )
+
+    st.divider()
+
+    # ── MACHINE PERFORMANCE TIMELINE ──────────────────────────────────────────
+    st.markdown("#### Machine Performance Timeline")
+    st.write("Chronological status timeline per machine · hover for details")
+
+    def machine_util_pct(m):
+        mdf = ov_df[ov_df["Machine_ID"] == m]
+        tot = mdf["Duration_Min"].sum()
+        up = mdf[mdf["Status"] == "UP_PRODUCT"]["Duration_Min"].sum()
+        return round((up / tot) * 100) if tot > 0 else 0
+
+    machines = sorted(ov_df["Machine_ID"].unique(), key=machine_util_pct)
+
+    for machine in machines:
+        mdf = ov_df[ov_df["Machine_ID"] == machine]
+        m_total = mdf["Duration_Min"].sum()
+        m_up = mdf[mdf["Status"] == "UP_PRODUCT"]["Duration_Min"].sum()
+        m_util = round((m_up / m_total) * 100) if m_total > 0 else 0
+        m_repair = int(mdf[mdf["Status"].isin(["WAIT_REPAIR", "IN_REPAIR"])]["Duration_Min"].sum())
+        m_idle = int(mdf[mdf["Status"] == "IDLE"]["Duration_Min"].sum())
+        m_pm = int(mdf[mdf["Status"].isin(["WAIT_PM", "IN_PM"])]["Duration_Min"].sum())
+        util_color = get_util_color(m_util, st.session_state.util_threshold)
+
+
+    tl_df = ov_df.copy()
+    tl_df = tl_df.dropna(subset=["Start_Time", "End_Time"])
+    tl_df = tl_df.sort_values("Start_Time")
+
+    if tl_df.empty:
+        st.warning("No timeline data available for this shift.")
+    else:
+        t_min = tl_df["Start_Time"].min()
+        t_max = tl_df["End_Time"].max()
+        total_span = (t_max - t_min).total_seconds() / 60.0
+
+        if total_span <= 0:
+            st.warning("Timeline span is zero — check Start_Time/End_Time columns.")
+        else:
+            # Build time axis labels (every 2 hours)
+            import math
+            axis_marks = []
+            cur = t_min.replace(minute=0, second=0, microsecond=0)
+            if cur < t_min:
+                cur += pd.Timedelta(hours=1)
+            while cur <= t_max:
+                pct = ((cur - t_min).total_seconds() / 60.0) / total_span * 100
+                axis_marks.append((pct, cur.strftime("%H:%M")))
+                cur += pd.Timedelta(hours=2)
+
+            axis_ticks_html = '<div style="position:relative; height:20px; margin-bottom:4px; margin-left:90px;">'
+            for pct, label in axis_marks:
+                axis_ticks_html += f'<span style="position:absolute; left:{pct:.1f}%; transform:translateX(-50%); font-size:10px; color:#888;">{label}</span>'
+            axis_ticks_html += '</div>'
+            st.markdown(axis_ticks_html, unsafe_allow_html=True)
+
+            for machine in machines:
+                mdf = tl_df[tl_df["Machine_ID"] == machine].sort_values("Start_Time")
+                segments_html = ""
+                for _, row in mdf.iterrows():
+                    seg_start = (row["Start_Time"] - t_min).total_seconds() / 60.0
+                    seg_dur = row["Duration_Min"]
+                    left_pct = (seg_start / total_span) * 100
+                    width_pct = (seg_dur / total_span) * 100
+                    color = STATUS_COLORS.get(row["Status"], "#555555")
+                    start_str = row["Start_Time"].strftime("%H:%M")
+                    end_str = row["End_Time"].strftime("%H:%M") if pd.notna(row["End_Time"]) else "?"
+                    reason = row.get("Downtime_Reason", "")
+                    reason_str = f" · {reason}" if pd.notna(reason) and str(reason).strip() else ""
+                    tooltip = f"{row['Status']}{reason_str} | {now} {start_str}–{end_str} ({int(seg_dur)} min)"
+                    segments_html += f'<div title="{tooltip}" style="position:absolute; left:{left_pct:.2f}%; width:{max(width_pct, 0.3):.2f}%; background:{color}; height:100%; border-right:1px solid #000000; box-sizing:border-box;"></div>'
+
+                st.markdown(f"""
+                    <div style="display:flex; align-items:center; margin-bottom:6px;">
+                        <div style="width:85px; min-width:85px; font-size:12px; color:#cccccc; font-weight:bold; padding-right:8px; text-align:right;">{machine}</div>
+                        <div style="flex:1; position:relative; height:22px; background:#2c2f3e; border-radius:4px; overflow:hidden;">
+                            {segments_html}
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+            # Legend (reuse same STATUS_COLORS)
+            tl_legend_html = '<div style="display:flex; gap:16px; flex-wrap:wrap; margin-top:8px; margin-left:90px;">'
+            for status, color in STATUS_COLORS.items():
+                tl_legend_html += f'<span style="font-size:12px; color:#aaaaaa;"><span style="display:inline-block; width:12px; height:12px; background:{color}; border-radius:2px; margin-right:4px;"></span>{status}</span>'
+            tl_legend_html += '</div>'
+            st.markdown(tl_legend_html, unsafe_allow_html=True)
+
+        st.divider()
 
     # ── DATASET PREVIEW SECTION ──────────────────────────────────────────────
     st.divider()
