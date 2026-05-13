@@ -126,6 +126,68 @@ def get_pct_color(pct):
 def get_util_color(pct, threshold):
     return "#2ecc71" if pct >= threshold else "#e74c3c"
 
+def render_threshold_sidebar():
+    st.markdown("## 🎯 Utilisation Threshold")
+
+    st.session_state.setdefault("util_threshold", 95)
+    st.session_state.setdefault("_thresh_slider", int(st.session_state["util_threshold"]))
+    st.session_state.setdefault("_thresh_input", int(st.session_state["util_threshold"]))
+
+    def _sync_from_slider():
+        val = int(st.session_state["_thresh_slider"])
+        st.session_state["_thresh_input"] = val
+        st.session_state["util_threshold"] = val
+
+    def _sync_from_input():
+        val = max(0, min(100, int(st.session_state["_thresh_input"])))
+        st.session_state["_thresh_input"] = val
+        st.session_state["_thresh_slider"] = val
+        st.session_state["util_threshold"] = val
+
+    st.slider(
+        "Threshold (%)",
+        min_value=0,
+        max_value=100,
+        step=1,
+        value=int(st.session_state["_thresh_slider"]),
+        key="_thresh_slider",
+        on_change=_sync_from_slider,
+    )
+
+    st.number_input(
+        "Manual input",
+        min_value=0,
+        max_value=100,
+        step=1,
+        value=int(st.session_state["_thresh_input"]),
+        key="_thresh_input",
+        on_change=_sync_from_input,
+    )
+
+    st.markdown(
+        f"""
+        <div style="
+            background-color:#1e2130;
+            border-radius:12px;
+            padding:16px 18px;
+            margin-top:10px;
+            border-left:5px solid #4a9eff;
+            display:flex;
+            flex-direction:column;
+            gap:8px;
+            align-items:center;
+        ">
+            <div style="color:#2ecc71; font-weight:bold; font-size:14px;">
+                🟢 ≥ {st.session_state['util_threshold']}%
+            </div>
+            <div style="color:#e74c3c; font-weight:bold; font-size:14px;">
+                🔴 &lt; {st.session_state['util_threshold']}%
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 def build_summary_context(filtered_df):
     fdf = filtered_df.copy()
     fdf["Status"] = fdf["Status"].astype(str).str.strip()
@@ -603,11 +665,18 @@ def render_actions_next_shift_section(summary_key, prompt_fn, *prompt_args):
 if st.session_state.df is not None and st.session_state.page != "upload":
     with st.sidebar:
         st.markdown("## 🗂️ Navigation")
-        if st.button("📋 Overview", use_container_width=True,
-                     type="primary" if st.session_state.page == "overview" else "secondary"):
+
+        if st.button(
+            "📋 Overview",
+            use_container_width=True,
+            type="primary" if st.session_state.page == "overview" else "secondary"
+        ):
             st.session_state.page = "overview"
             st.rerun()
+
         st.divider()
+
+        render_threshold_sidebar()
 
 # ── PAGE: OVERVIEW ─────────────────────────────────────────────────────────────
 if st.session_state.page == "overview":
@@ -781,75 +850,6 @@ if st.session_state.page == "overview":
         )
 
     st.divider()
-
-    # ── UTILISATION THRESHOLD ON OVERVIEW PAGE ───────────────────────────────
-    st.markdown("#### 🎯 Overall Utilisation Threshold")
-
-    st.session_state.setdefault("util_threshold", 95)
-    st.session_state.setdefault("_thresh_slider", int(st.session_state["util_threshold"]))
-    st.session_state.setdefault("_thresh_input", int(st.session_state["util_threshold"]))
-
-    def _sync_from_slider():
-        val = int(st.session_state["_thresh_slider"])
-        st.session_state["_thresh_input"] = val
-        st.session_state["util_threshold"] = val
-
-    def _sync_from_input():
-        val = max(0, min(100, int(st.session_state["_thresh_input"])))
-        st.session_state["_thresh_input"] = val
-        st.session_state["_thresh_slider"] = val
-        st.session_state["util_threshold"] = val
-
-    th_col1, th_col2 = st.columns([2, 1])
-
-    with th_col1:
-        st.slider(
-            "Threshold (%)",
-            min_value=0,
-            max_value=100,
-            step=1,
-            value=int(st.session_state["_thresh_slider"]),
-            key="_thresh_slider",
-            on_change=_sync_from_slider,
-        )
-
-        st.number_input(
-            "Manual input",
-            min_value=0,
-            max_value=100,
-            step=1,
-            value=int(st.session_state["_thresh_input"]),
-            key="_thresh_input",
-            on_change=_sync_from_input,
-        )
-
-    with th_col2:
-        st.markdown(
-            f"""
-            <div style="
-                background-color:#1e2130;
-                border-radius:12px;
-                padding:22px 24px;
-                margin-top:28px;
-                border-left:5px solid #4a9eff;
-                min-height:92px;
-                display:flex;
-                flex-direction:column;
-                justify-content:center;
-                gap:10px;
-                justify-content:center;
-                align-items:center;
-            ">
-                <div style="color:#2ecc71; font-weight:bold; font-size:15px;">
-                    🟢 ≥ {st.session_state['util_threshold']}%
-                </div>
-                <div style="color:#e74c3c; font-weight:bold; font-size:15px;">
-                    🔴 &lt; {st.session_state['util_threshold']}%
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
 
     # ── MACHINE PERFORMANCE TIMELINE ──────────────────────────────────────────
     st.divider()
