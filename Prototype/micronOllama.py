@@ -242,35 +242,19 @@ def build_prompt_all(filtered_df, shift_label):
     ) if not spare_flags.empty else "No spare parts shortage signals found"
 
     prompt = f"""
-Generate a structured overall shift-utilization summary for ALL machines, covering exactly 10 insight areas: 
+Generate a structured overall shift-utilization summary for ALL machines, covering exactly 3 insight areas:
 
-── Per-Machine Utilization ── 
+ 
 
-1. Utilization rate: % of shift time each machine spent in PRODUCTIVE/RUN state, ranked from lowest to highest. 
+1. Utilization & Availability: % of shift time each machine spent in PRODUCTIVE/RUN state, ranked lowest to highest, with availability rate (% time not in fault/repair/PM).
 
-2. Availability rate: % of shift time each machine was available (not in any fault/repair/PM state). 
+ 
 
-── Downtime & Maintenance ── 
+2. Top Downtime Drivers: rank machines by total downtime contribution, identify the dominant root causes (manpower shortage via WAIT_REPAIR/WAIT_PM dominance, spare parts delays, recurring fault types).
 
-3. Alarm frequency: highest-occurrence IN_REPAIR fault types across all machines. 
+ 
 
-4. IN_REPAIR vs WAIT_REPAIR duration analysis per machine. 
-
-5. Percentage of time in WAIT_PM and WAIT_REPAIR per machine for this shift. 
-
-6. Downtime contribution: rank machines by total downtime, showing each machine's share of overall lost time. 
-
-── Root Cause Signals ── 
-
-7. Manpower shortage signals: WAIT_REPAIR and WAIT_PM dominance patterns across machines. 
-
-8. Non-machine failures: people delays, parts delays, and other external causes. 
-
-9. Spare parts shortage flags: recurring repair waits suggesting parts unavailability. 
-
-── Overall Summary ── 
-
-10. Fleet-level summary: overall line utilization %, top 3 bottleneck machines, and key actionable recommendations for the next shift. 
+3. Fleet Summary & Actions: overall line utilization %, top 3 bottleneck machines, and key actionable recommendations for the next shift. 
 
 Shift: {shift_label}
 
@@ -285,7 +269,7 @@ Available data:
 - Top 20% downtime contributors: {top_20_str}
 - Spare parts shortage flags: {spare_flags_str}
 
-Write exactly 10 bullet points using • as the bullet symbol.
+Write exactly 3 bullet points using • as the bullet symbol.
 Each bullet point should correspond to one insight area.
 Be factual, direct, and operational.
 Do not add headers.
@@ -347,35 +331,19 @@ def build_prompt_machine(machine_id, filtered_df, shift_label):
         if not spare_reasons.empty else "No spare parts shortage signals found"
 
     prompt = f"""
-Generate a structured overall shift-utilization summary for ALL machines, covering exactly 10 insight areas: 
+Generate a structured overall shift-utilization summary for ALL machines, covering exactly 3 insight areas:
 
-── Per-Machine Utilization ── 
+ 
 
-1. Utilization rate: % of shift time each machine spent in PRODUCTIVE/RUN state, ranked from lowest to highest. 
+1. Utilization & Availability: % of shift time each machine spent in PRODUCTIVE/RUN state, ranked lowest to highest, with availability rate (% time not in fault/repair/PM).
 
-2. Availability rate: % of shift time each machine was available (not in any fault/repair/PM state). 
+ 
 
-── Downtime & Maintenance ── 
+2. Top Downtime Drivers: rank machines by total downtime contribution, identify the dominant root causes (manpower shortage via WAIT_REPAIR/WAIT_PM dominance, spare parts delays, recurring fault types).
 
-3. Alarm frequency: highest-occurrence IN_REPAIR fault types across all machines. 
+ 
 
-4. IN_REPAIR vs WAIT_REPAIR duration analysis per machine. 
-
-5. Percentage of time in WAIT_PM and WAIT_REPAIR per machine for this shift. 
-
-6. Downtime contribution: rank machines by total downtime, showing each machine's share of overall lost time. 
-
-── Root Cause Signals ── 
-
-7. Manpower shortage signals: WAIT_REPAIR and WAIT_PM dominance patterns across machines. 
-
-8. Non-machine failures: people delays, parts delays, and other external causes. 
-
-9. Spare parts shortage flags: recurring repair waits suggesting parts unavailability. 
-
-── Overall Summary ── 
-
-10. Fleet-level summary: overall line utilization %, top 3 bottleneck machines, and key actionable recommendations for the next shift. 
+3. Fleet Summary & Actions: overall line utilization %, top 3 bottleneck machines, and key actionable recommendations for the next shift.
 
 Machine: {machine_id}
 Shift: {shift_label}
@@ -392,7 +360,7 @@ Available data:
 - Spare parts shortage duration: {spare_min} minutes
 - Spare parts shortage reasons: {spare_reasons_str}
 
-Write exactly 10 bullet points using • as the bullet symbol.
+Write exactly 3 bullet points using • as the bullet symbol.
 Each bullet point should correspond to one insight area.
 Be factual, direct, and operational.
 Do not add headers.
@@ -569,7 +537,7 @@ def render_ai_summary_section(summary_key, prompt_fn, *prompt_args):
         if lines:
             bullet_html = "<br>".join([
                 f'<div style="margin-bottom:8px;">{line}</div>'
-                for line in lines[:10]
+                for line in lines[:3]
             ])
 
             st.markdown(f"""
