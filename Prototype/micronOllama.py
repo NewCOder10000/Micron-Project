@@ -105,8 +105,12 @@ def colored_metric(title, value, desc="", color="#ffffff"):
             min-height: 118px;
             box-sizing: border-box;
         ">
-            <div style="font-size: 13px; color: #aaaaaa; margin-bottom: 4px;">{title}</div>
-            <div style="font-size: 28px; font-weight: bold; color: {color};">{value}</div>
+            <div style="font-size: 13px; color: {color}; margin-bottom: 4px; font-weight: bold;">
+                {title}
+            </div>
+            <div style="font-size: 28px; font-weight: bold; color: #ffffff;">
+                {value}
+            </div>
             <div style="font-size: 11px; color: #777777; margin-top: 4px; min-height: 14px;">
                 {desc_html}
             </div>
