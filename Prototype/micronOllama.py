@@ -874,7 +874,6 @@ if st.session_state.page == "overview":
     st.divider()
 
     # ── MACHINE PERFORMANCE TIMELINE ──────────────────────────────────────────
-    st.divider()
     st.markdown("#### Machine Performance Timeline")
     st.write("Chronological status timeline per machine · hover for details")
 
@@ -1021,6 +1020,7 @@ if st.session_state.page == "overview":
     ]
 
 # ── PLOT ──────────────────────────────────────────────────────
+    st.markdown("#### Machine Utilization vs Target")
     fig = go.Figure()
 
     # Utilization bars
@@ -1068,7 +1068,6 @@ if st.session_state.page == "overview":
     ))
 
     fig.update_layout(
-        title="Machine Utilization vs Target",
         paper_bgcolor="#0e1117",
         plot_bgcolor="#0e1117",
         font=dict(color="white"),
