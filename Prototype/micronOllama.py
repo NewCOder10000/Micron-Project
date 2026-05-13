@@ -73,45 +73,63 @@ def read_uploaded_dataset(uploaded_file):
 
     raise ValueError("Unsupported file type. Please upload a CSV, XLSX, or XLS file.")
 
-def metric_box(title, value, desc):
+def metric_box(title, value, desc=""):
+    desc_html = desc if desc else "&nbsp;"
+
     st.markdown(f"""
         <div style="
             background-color: #1e2130;
             border-radius: 10px;
             padding: 16px 20px;
             border-left: 5px solid #4a9eff;
+            min-height: 118px;
+            box-sizing: border-box;
         ">
             <div style="font-size: 13px; color: #aaaaaa; margin-bottom: 4px;">{title}</div>
             <div style="font-size: 28px; font-weight: bold; color: #ffffff;">{value}</div>
-            <div style="font-size: 11px; color: #777777; margin-top: 4px;">{desc}</div>
+            <div style="font-size: 11px; color: #777777; margin-top: 4px; min-height: 14px;">
+                {desc_html}
+            </div>
         </div>
     """, unsafe_allow_html=True)
 
-def colored_metric(title, value, desc, color):
+def colored_metric(title, value, desc="", color="#ffffff"):
+    desc_html = desc if desc else "&nbsp;"
+
     st.markdown(f"""
         <div style="
             background-color: #1e2130;
             border-radius: 10px;
             padding: 16px 20px;
             border-left: 5px solid #4a9eff;
+            min-height: 118px;
+            box-sizing: border-box;
         ">
             <div style="font-size: 13px; color: #aaaaaa; margin-bottom: 4px;">{title}</div>
             <div style="font-size: 28px; font-weight: bold; color: {color};">{value}</div>
-            <div style="font-size: 11px; color: #777777; margin-top: 4px;">{desc}</div>
+            <div style="font-size: 11px; color: #777777; margin-top: 4px; min-height: 14px;">
+                {desc_html}
+            </div>
         </div>
     """, unsafe_allow_html=True)
 
-def html_metric(title, value_html, desc):
+def html_metric(title, value_html, desc=""):
+    desc_html = desc if desc else "&nbsp;"
+
     st.markdown(f"""
         <div style="
             background-color: #1e2130;
             border-radius: 10px;
             padding: 16px 20px;
             border-left: 5px solid #4a9eff;
+            min-height: 118px;
+            box-sizing: border-box;
         ">
             <div style="font-size: 13px; color: #aaaaaa; margin-bottom: 4px;">{title}</div>
             <div style="font-size: 28px; font-weight: bold;">{value_html}</div>
-            <div style="font-size: 11px; color: #777777; margin-top: 4px;">{desc}</div>
+            <div style="font-size: 11px; color: #777777; margin-top: 4px; min-height: 14px;">
+                {desc_html}
+            </div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -805,7 +823,7 @@ if st.session_state.page == "overview":
                 "Active Machines",
                 f'<span style="color:{running_color};">{machines_running}</span> '
                 f'<span style="color:#ffffff;">out of {total_machines}</span>',
-                " test"
+                ""
             )
 
     with fc2:
@@ -820,7 +838,7 @@ if st.session_state.page == "overview":
         metric_box(
             "Total Downtime",
             f'{total_downtime} min</span>',
-            "test"
+            ""
         )
 
     with fc4:
@@ -837,15 +855,15 @@ if st.session_state.page == "overview":
 
     with fc5:
         metric_box(
-            "Total PM Time",
-            f'<span style="color:#FFC0CB;">{fleet_pm} min</span>',
+            f'<span style="color:#FFC0CB;">Total PM Time</span>',
+            f'{fleet_pm} min',
             "WAIT_PM + IN_PM"
         )
 
     with fc6:
         metric_box(
-            "Total Idle Time",
-            f'<span style="color:#5F5FFF;">{fleet_idle} min</span>',
+            f'<span style="color:#5F5FFF;">Total Idle Time</span>',
+            f'{fleet_idle} min',
             "IDLE status across all machines"
         )
 
