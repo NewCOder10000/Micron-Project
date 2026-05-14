@@ -902,10 +902,28 @@ if st.session_state.page == "overview":
     chart_df = target_df.merge(util_df, on="Machine_ID", how="left")
     chart_df["Utilization"] = chart_df["Utilization"].fillna(0)
     
+    greens = chart_df[chart_df["Utilization"] >= chart_df["Target"]]
+    reds = chart_df[chart_df["Utilization"] < chart_df["Target"]]
+
+    # Alternate green/red rows
+    rows = []
+
+    for g, r in zip(greens.to_dict("records"), reds.to_dict("records")):
+        rows.append(g)
+        rows.append(r)
+
+    # Add leftovers if unequal counts
+    longer = greens if len(greens) > len(reds) else reds
+
+    for extra in longer.iloc[len(rows)//2:].to_dict("records"):
+        rows.append(extra)
+
+    chart_df = pd.DataFrame(rows)
+    
     if selected_machine != "All":
         bar_colors = [
-            "#2ecc71" if (m == selected_machine and u >= t)
-            else "#e74c3c" if m == selected_machine
+            "#00ff6a" if (m == selected_machine and u >= t)
+            else "#ff1900" if m == selected_machine
             else "rgba(0,0,0,0)"   # fully transparent (hidden)
             for m, u, t in zip(
                 chart_df["Machine_ID"],
@@ -920,26 +938,24 @@ if st.session_state.page == "overview":
         ]
     else:
         bar_colors = [
-            "#2ecc71" if u >= t else "#e74c3c"
+            "#00ff6a" if u >= t else "#ff1900"
             for u, t in zip(chart_df["Utilization"], chart_df["Target"])
         ]
         text_vals = [f"{u}%" for u in chart_df["Utilization"]]
 
-# ── COLORS ────────────────────────────────────────────────────
-    colors = [
-        "#2ecc71" if u >= t else "#e74c3c"
-        for u, t in zip(chart_df["Utilization"], chart_df["Target"])
-    ]
-
 # ── PLOT ──────────────────────────────────────────────────────
     st.markdown("#### Machine Utilization vs Target")
     fig = go.Figure()
-
+    
+    
     # Utilization bars
     fig.add_trace(go.Bar(
         x=chart_df["Machine_ID"],
         y=chart_df["Utilization"],
-        marker_color=bar_colors,
+        marker=dict(
+            color=bar_colors,
+            line=dict(color="#00ff6a", width=0)
+        ),
         text=text_vals,
         textposition="outside",
         name="Utilization",
@@ -992,7 +1008,9 @@ if st.session_state.page == "overview":
             yanchor="bottom",
             y=1.02,
             xanchor="right",
-            x=1
+            x=1,
+            itemclick=False,
+            itemdoubleclick=False
         )
     )
 
@@ -1012,12 +1030,12 @@ if st.session_state.page == "overview":
                 Machine Utilization Targets
             </div>
             <div style="color:#cccccc; font-size:13px; letter-spacing:0.5px;">
-                CMP-01 <b>95%</b> &nbsp;|&nbsp;
                 CVD-01 <b>86%</b> &nbsp;|&nbsp;
-                DIFF-01 <b>85%</b> &nbsp;|&nbsp;
+                CMP-01 <b>95%</b> &nbsp;|&nbsp;
                 ETCH-01 <b>96%</b> &nbsp;|&nbsp;
-                IMP-01 <b>89%</b> &nbsp;|&nbsp;
-                LITHO-01 <b>88%</b>
+                DIFF-01 <b>85%</b> &nbsp;|&nbsp;
+                LITHO-01 <b>88%</b> &nbsp;|&nbsp;
+                IMP-01 <b>89%</b>
             </div>
         </div>
         """,
