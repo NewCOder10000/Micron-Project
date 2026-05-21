@@ -869,7 +869,11 @@ if st.session_state.page == "overview":
     st.markdown(f"#### Machine Summary · {ov_shift_label}")
     # ── Additional Fleet Metrics ────────────────────────────────────────────────
     machines_running = ov_df[ov_df["Status"] == "UP_PRODUCT"]["Machine_ID"].nunique()
-    total_downtime = int(ov_df[ov_df["Status"] != "UP_PRODUCT"]["Duration_Min"].sum())
+    total_downtime = int(
+        ov_df[
+            ~ov_df["Status"].isin(["UP_PRODUCT", "IDLE"])
+        ]["Duration_Min"].sum()
+    )
 
     STATUS_COLORS = {
         "UP_PRODUCT": "#008000",
